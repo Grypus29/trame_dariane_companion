@@ -158,6 +158,10 @@ button:focus-visible {
   gap: 10px;
 }
 
+.compact-grid {
+  align-items: end;
+}
+
 .primary-action,
 .secondary-action {
   width: 100%;
@@ -255,6 +259,74 @@ button:focus-visible {
   font-weight: 700;
 }
 
+.card-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.link-panel,
+.move-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 252, 246, 0.66);
+}
+
+.section-lead,
+.link-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.section-lead h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.section-lead span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.link-list {
+  display: grid;
+  gap: 8px;
+}
+
+.link-card {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 250, 242, 0.78);
+}
+
+.link-card strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.98rem;
+}
+
+.link-card p {
+  margin: 4px 0 0;
+}
+
+.link-card button {
+  min-width: 40px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  font: inherit;
+  font-size: 1.2rem;
+}
+
 .action-row {
   display: flex;
   gap: 8px;
@@ -348,6 +420,47 @@ button:focus-visible {
   margin: 0;
   color: var(--muted);
   font-size: 0.86rem;
+}
+
+.focus-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: max(14px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(245, 239, 229, 0.56)),
+    var(--page);
+  overflow: auto;
+}
+
+.focus-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.focus-editor-header h2 {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.focus-editor-header .secondary-action {
+  width: auto;
+  min-width: 92px;
+}
+
+.focus-writing-field {
+  min-height: 0;
+}
+
+.focus-writing-field textarea {
+  min-height: 48svh;
 }
 
 .bottom-nav {

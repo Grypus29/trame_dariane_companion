@@ -1,4 +1,4 @@
-import type { IdeaStatus, IdeaType, ManuscriptNode, MobileIdea, MobileState, NarrativeElement } from '../types'
+import type { IdeaLinkKind, IdeaStatus, IdeaType, ManuscriptNode, MobileIdea, MobileIdeaLink, MobileState, NarrativeElement } from '../types'
 
 const STORAGE_KEY = 'trame-dariane-mobile-state-v1'
 
@@ -6,6 +6,7 @@ const now = new Date().toISOString()
 
 const DESKTOP_IDEA_TYPES: IdeaType[] = ['scene', 'fragment', 'motif', 'revelation']
 const DESKTOP_STATUSES: IdeaStatus[] = ['idea', 'draft', 'written', 'reviewed']
+const DESKTOP_LINK_KINDS: IdeaLinkKind[] = ['causal', 'echo', 'motif', 'resonance', 'tension']
 
 export const initialState: MobileState = {
   version: 1,
@@ -44,6 +45,17 @@ export const initialState: MobileState = {
       content:
         "Je veux pouvoir dicter ici une scene brute depuis le telephone, puis la reprendre plus tard sur l'ordinateur.",
       tags: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ],
+  dedaleLinks: [
+    {
+      id: 'link-opening-motif',
+      fromIdeaId: 'idea-opening',
+      toIdeaId: 'idea-motif',
+      kind: 'echo',
+      note: 'Le vertige physique répond au motif de la chute.',
       createdAt: now,
       updatedAt: now,
     },
@@ -111,6 +123,14 @@ function normalizeStatus(value: unknown): IdeaStatus {
   return 'idea'
 }
 
+function normalizeLinkKind(value: unknown): IdeaLinkKind {
+  if (typeof value === 'string' && DESKTOP_LINK_KINDS.includes(value as IdeaLinkKind)) {
+    return value as IdeaLinkKind
+  }
+
+  return 'echo'
+}
+
 function normalizeIdea(value: Partial<MobileIdea> & { notes?: string }, index: number): MobileIdea {
   const date = typeof value.updatedAt === 'string' ? value.updatedAt : now
 
@@ -161,6 +181,24 @@ function normalizeNode(value: Partial<ManuscriptNode>, index: number): Manuscrip
   }
 }
 
+function normalizeLink(value: Partial<MobileIdeaLink>, index: number): MobileIdeaLink | null {
+  if (typeof value.fromIdeaId !== 'string' || typeof value.toIdeaId !== 'string') {
+    return null
+  }
+
+  const date = typeof value.updatedAt === 'string' ? value.updatedAt : now
+
+  return {
+    id: typeof value.id === 'string' ? value.id : `link-import-${index}`,
+    fromIdeaId: value.fromIdeaId,
+    toIdeaId: value.toIdeaId,
+    kind: normalizeLinkKind(value.kind),
+    note: typeof value.note === 'string' ? value.note : '',
+    createdAt: typeof value.createdAt === 'string' ? value.createdAt : date,
+    updatedAt: date,
+  }
+}
+
 function normalizeState(parsed: Partial<MobileState> & { texts?: Array<{ id?: string; projectId?: string | null; title?: string; content?: string; updatedAt?: string }> }): MobileState {
   const projects = Array.isArray(parsed.projects) && parsed.projects.length > 0 ? parsed.projects : initialState.projects
   const ideas = Array.isArray(parsed.ideas) ? parsed.ideas.map(normalizeIdea) : initialState.ideas
@@ -194,6 +232,9 @@ function normalizeState(parsed: Partial<MobileState> & { texts?: Array<{ id?: st
     version: 1,
     projects,
     ideas,
+    dedaleLinks: Array.isArray(parsed.dedaleLinks)
+      ? parsed.dedaleLinks.map(normalizeLink).filter((link): link is MobileIdeaLink => link !== null)
+      : [],
     manuscriptNodes,
     elements: Array.isArray(parsed.elements) ? parsed.elements.map(normalizeElement) : initialState.elements,
   }

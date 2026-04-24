@@ -4,6 +4,7 @@ import { loadMobileState, parseImportedState, saveMobileState } from './lib/mobi
 import type {
   IdeaStatus,
   IdeaType,
+  IdeaLinkKind,
   ManuscriptNode,
   MobileIdea,
   MobileState,
@@ -41,6 +42,14 @@ const elementKinds: Array<{ id: NarrativeElementKind; label: string }> = [
   { id: 'concept', label: 'Concept' },
 ]
 
+const linkKinds: Array<{ id: IdeaLinkKind; label: string }> = [
+  { id: 'echo', label: 'Écho' },
+  { id: 'causal', label: 'Causal' },
+  { id: 'motif', label: 'Motif' },
+  { id: 'resonance', label: 'Résonance' },
+  { id: 'tension', label: 'Tension' },
+]
+
 function createId(prefix: string) {
   if ('randomUUID' in crypto) {
     return `${prefix}-${crypto.randomUUID()}`
@@ -73,6 +82,10 @@ function getElementKindLabel(kind: NarrativeElementKind) {
   return elementKinds.find((item) => item.id === kind)?.label ?? kind
 }
 
+function getLinkKindLabel(kind: IdeaLinkKind) {
+  return linkKinds.find((item) => item.id === kind)?.label ?? kind
+}
+
 function sortByOrder<T extends { sortOrder: number; id: string }>(items: T[]) {
   return [...items].sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id))
 }
@@ -81,7 +94,10 @@ function App() {
   const [state, setState] = useState<MobileState>(() => loadMobileState())
   const [activeTab, setActiveTab] = useState<MobileTab>('dedale')
   const [query, setQuery] = useState('')
+  const [ideaTypeFilter, setIdeaTypeFilter] = useState<IdeaType | 'all'>('all')
+  const [ideaStatusFilter, setIdeaStatusFilter] = useState<IdeaStatus | 'all'>('all')
   const [editingIdeaId, setEditingIdeaId] = useState<string | null>(null)
+  const [focusIdeaId, setFocusIdeaId] = useState<string | null>(null)
   const [ideaTitle, setIdeaTitle] = useState('')
   const [ideaContent, setIdeaContent] = useState('')
   const [ideaType, setIdeaType] = useState<IdeaType>('scene')
@@ -92,7 +108,13 @@ function App() {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(state.manuscriptNodes.find((node) => node.kind === 'block')?.id ?? null)
   const [sectionTitle, setSectionTitle] = useState('')
   const [blockIdeaId, setBlockIdeaId] = useState(state.ideas[0]?.id ?? '')
+  const [moveTargetParentId, setMoveTargetParentId] = useState<string>('')
+  const [linkTargetId, setLinkTargetId] = useState('')
+  const [linkKind, setLinkKind] = useState<IdeaLinkKind>('echo')
+  const [linkNote, setLinkNote] = useState('')
   const [editingElementId, setEditingElementId] = useState<string | null>(null)
+  const [elementQuery, setElementQuery] = useState('')
+  const [elementKindFilter, setElementKindFilter] = useState<NarrativeElementKind | 'all'>('all')
   const [elementKind, setElementKind] = useState<NarrativeElementKind>('personnage')
   const [elementName, setElementName] = useState('')
   const [elementDescription, setElementDescription] = useState('')
@@ -112,10 +134,12 @@ function App() {
     }
 
     return state.ideas.filter((idea) => {
+      if (ideaTypeFilter !== 'all' && idea.type !== ideaTypeFilter) return false
+      if (ideaStatusFilter !== 'all' && idea.status !== ideaStatusFilter) return false
       const haystack = `${idea.title} ${idea.content} ${idea.tags.join(' ')}`.toLocaleLowerCase()
       return haystack.includes(needle)
     })
-  }, [query, state.ideas])
+  }, [ideaStatusFilter, ideaTypeFilter, query, state.ideas])
 
   const ideaById = useMemo(() => new Map(state.ideas.map((idea) => [idea.id, idea])), [state.ideas])
   const nodesByParent = useMemo(() => {
@@ -135,7 +159,25 @@ function App() {
 
   const selectedBlock = selectedBlockId ? state.manuscriptNodes.find((node) => node.id === selectedBlockId && node.kind === 'block') : null
   const selectedBlockIdea = selectedBlock?.ideaId ? ideaById.get(selectedBlock.ideaId) ?? null : null
+  const focusIdea = focusIdeaId ? ideaById.get(focusIdeaId) ?? null : null
   const sectionOptions = state.manuscriptNodes.filter((node) => node.kind !== 'block')
+  const availableBlockIdeas = state.ideas.filter((idea) => idea.type !== 'motif')
+  const currentIdeaLinks = editingIdeaId
+    ? state.dedaleLinks.filter((link) => link.fromIdeaId === editingIdeaId || link.toIdeaId === editingIdeaId)
+    : []
+  const possibleLinkTargets = editingIdeaId
+    ? state.ideas.filter((idea) => idea.id !== editingIdeaId)
+    : []
+  const filteredElements = useMemo(() => {
+    const needle = elementQuery.trim().toLocaleLowerCase()
+
+    return state.elements.filter((element) => {
+      if (elementKindFilter !== 'all' && element.kind !== elementKindFilter) return false
+      if (!needle) return true
+
+      return `${element.name} ${element.description} ${element.traits}`.toLocaleLowerCase().includes(needle)
+    })
+  }, [elementKindFilter, elementQuery, state.elements])
 
   function resetIdeaForm() {
     setEditingIdeaId(null)
@@ -153,6 +195,9 @@ function App() {
     setIdeaType(idea.type)
     setIdeaStatus(idea.status)
     setIdeaTags(idea.tags.join(', '))
+    setLinkTargetId(state.ideas.find((item) => item.id !== idea.id)?.id ?? '')
+    setLinkKind('echo')
+    setLinkNote('')
     setActiveTab('dedale')
   }
 
@@ -211,6 +256,55 @@ function App() {
     }))
   }
 
+  function updateIdeaFields(ideaId: string, patch: Partial<Pick<MobileIdea, 'title' | 'type' | 'status'>>) {
+    setState((current) => ({
+      ...current,
+      ideas: current.ideas.map((idea) =>
+        idea.id === ideaId ? { ...idea, ...patch, updatedAt: new Date().toISOString() } : idea,
+      ),
+    }))
+  }
+
+  function addIdeaLink() {
+    if (!editingIdeaId || !linkTargetId || editingIdeaId === linkTargetId) {
+      return
+    }
+
+    const exists = state.dedaleLinks.some((link) => (
+      link.fromIdeaId === editingIdeaId && link.toIdeaId === linkTargetId && link.kind === linkKind
+    ))
+
+    if (exists) {
+      return
+    }
+
+    const date = new Date().toISOString()
+
+    setState((current) => ({
+      ...current,
+      dedaleLinks: [
+        {
+          id: createId('link'),
+          fromIdeaId: editingIdeaId,
+          toIdeaId: linkTargetId,
+          kind: linkKind,
+          note: linkNote.trim(),
+          createdAt: date,
+          updatedAt: date,
+        },
+        ...current.dedaleLinks,
+      ],
+    }))
+    setLinkNote('')
+  }
+
+  function deleteIdeaLink(linkId: string) {
+    setState((current) => ({
+      ...current,
+      dedaleLinks: current.dedaleLinks.filter((link) => link.id !== linkId),
+    }))
+  }
+
   function createSection(kind: 'chapter' | 'subchapter') {
     const title = sectionTitle.trim()
 
@@ -246,6 +340,13 @@ function App() {
       return
     }
 
+    const existingBlock = state.manuscriptNodes.find((node) => node.kind === 'block' && node.ideaId === blockIdeaId)
+    if (existingBlock) {
+      setSelectedBlockId(existingBlock.id)
+      setSelectedParentId(existingBlock.parentId)
+      return
+    }
+
     const date = new Date().toISOString()
     const parentId = selectedParentId
     const siblings = nodesByParent.get(parentId) ?? []
@@ -266,6 +367,27 @@ function App() {
       manuscriptNodes: [...current.manuscriptNodes, node],
     }))
     setSelectedBlockId(node.id)
+  }
+
+  function moveSelectedBlockToParent() {
+    if (!selectedBlockId) {
+      return
+    }
+
+    const nextParentId = moveTargetParentId || null
+    const date = new Date().toISOString()
+
+    setState((current) => {
+      const siblings = current.manuscriptNodes.filter((node) => node.parentId === nextParentId)
+      return {
+        ...current,
+        manuscriptNodes: current.manuscriptNodes.map((node) =>
+          node.id === selectedBlockId
+            ? { ...node, parentId: nextParentId, sortOrder: siblings.length, updatedAt: date }
+            : node,
+        ),
+      }
+    })
   }
 
   function moveNode(nodeId: string, direction: -1 | 1) {
@@ -501,10 +623,88 @@ function App() {
             </div>
           </div>
 
-          <label>
-            Recherche
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Mot, tag, scène..." />
-          </label>
+            <label>
+              Recherche
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Mot, tag, scène..." />
+            </label>
+
+          <div className="form-grid compact-grid">
+            <label>
+              Type
+              <select value={ideaTypeFilter} onChange={(event) => setIdeaTypeFilter(event.target.value as IdeaType | 'all')}>
+                <option value="all">Tous</option>
+                {ideaTypes.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Statut
+              <select value={ideaStatusFilter} onChange={(event) => setIdeaStatusFilter(event.target.value as IdeaStatus | 'all')}>
+                <option value="all">Tous</option>
+                {statuses.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {editingIdeaId && (
+            <div className="link-panel">
+              <div className="section-lead">
+                <h3>Liens</h3>
+                <span>{currentIdeaLinks.length}</span>
+              </div>
+
+              <div className="form-grid compact-grid">
+                <label>
+                  Idée liée
+                  <select value={linkTargetId} onChange={(event) => setLinkTargetId(event.target.value)}>
+                    {possibleLinkTargets.map((idea) => (
+                      <option key={idea.id} value={idea.id}>{idea.title}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Type de lien
+                  <select value={linkKind} onChange={(event) => setLinkKind(event.target.value as IdeaLinkKind)}>
+                    {linkKinds.map((item) => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label>
+                Note du lien
+                <input value={linkNote} onChange={(event) => setLinkNote(event.target.value)} placeholder="Ce que ces deux idées se répondent..." />
+              </label>
+
+              <button className="secondary-action" type="button" onClick={addIdeaLink} disabled={!linkTargetId}>
+                Ajouter le lien
+              </button>
+
+              <div className="link-list">
+                {currentIdeaLinks.map((link) => {
+                  const otherId = link.fromIdeaId === editingIdeaId ? link.toIdeaId : link.fromIdeaId
+                  const other = ideaById.get(otherId)
+
+                  return (
+                    <article className="link-card" key={link.id}>
+                      <div>
+                        <p className="idea-meta">{getLinkKindLabel(link.kind)}</p>
+                        <strong>{other?.title ?? 'Idée inconnue'}</strong>
+                        {link.note && <p>{link.note}</p>}
+                      </div>
+                      <button aria-label="Supprimer le lien" onClick={() => deleteIdeaLink(link.id)} type="button">×</button>
+                    </article>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="idea-list">
             {filteredIdeas.map((idea) => (
@@ -523,6 +723,11 @@ function App() {
                     ))}
                   </div>
                 )}
+                <div className="card-actions">
+                  <button className="secondary-action" onClick={() => setFocusIdeaId(idea.id)} type="button">
+                    Écrire
+                  </button>
+                </div>
               </article>
             ))}
           </div>
@@ -564,7 +769,7 @@ function App() {
             <label>
               Idée à ajouter comme bloc
               <select value={blockIdeaId} onChange={(event) => setBlockIdeaId(event.target.value)}>
-                {state.ideas.map((idea) => (
+                {availableBlockIdeas.map((idea) => (
                   <option key={idea.id} value={idea.id}>{idea.title}</option>
                 ))}
               </select>
@@ -590,6 +795,25 @@ function App() {
                 rows={14}
               />
               <p className="writing-stats">{countWords(selectedBlockIdea.content)} mots · sauvegarde locale automatique</p>
+
+              <button className="primary-action" type="button" onClick={() => setFocusIdeaId(selectedBlockIdea.id)}>
+                Ouvrir en rédaction
+              </button>
+
+              <div className="move-panel">
+                <label>
+                  Déplacer le bloc vers
+                  <select value={moveTargetParentId} onChange={(event) => setMoveTargetParentId(event.target.value)}>
+                    <option value="">Racine du manuscrit</option>
+                    {sectionOptions.map((node) => (
+                      <option key={node.id} value={node.id}>{node.title || 'Sans titre'}</option>
+                    ))}
+                  </select>
+                </label>
+                <button className="secondary-action" type="button" onClick={moveSelectedBlockToParent}>
+                  Déplacer
+                </button>
+              </div>
             </div>
           )}
         </section>
@@ -600,6 +824,23 @@ function App() {
           <div className="screen-title">
             <p className="eyebrow">Personnages, lieux, objets et thèmes</p>
             <h2 id="elements-title">Éléments</h2>
+          </div>
+
+          <div className="form-grid compact-grid">
+            <label>
+              Recherche
+              <input value={elementQuery} onChange={(event) => setElementQuery(event.target.value)} placeholder="Nom, description, trait..." />
+            </label>
+
+            <label>
+              Type
+              <select value={elementKindFilter} onChange={(event) => setElementKindFilter(event.target.value as NarrativeElementKind | 'all')}>
+                <option value="all">Tous</option>
+                {elementKinds.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="form-panel">
@@ -642,7 +883,7 @@ function App() {
           </div>
 
           <div className="element-list">
-            {state.elements.map((element) => (
+            {filteredElements.map((element) => (
               <article className="element-card" key={element.id}>
                 <button className="card-button" onClick={() => openElementForm(element)} type="button">
                   <p className="idea-meta">{getElementKindLabel(element.kind)}</p>
@@ -699,6 +940,59 @@ function App() {
           </button>
         ))}
       </nav>
+
+      {focusIdea && (
+        <section className="focus-editor" aria-labelledby="focus-title" role="dialog" aria-modal="true">
+          <div className="focus-editor-header">
+            <div>
+              <p className="eyebrow">{getIdeaTypeLabel(focusIdea.type)} · {getStatusLabel(focusIdea.status)}</p>
+              <h2 id="focus-title">Rédaction</h2>
+            </div>
+            <button className="secondary-action" onClick={() => setFocusIdeaId(null)} type="button">
+              Fermer
+            </button>
+          </div>
+
+          <label>
+            Titre
+            <input
+              value={focusIdea.title}
+              onChange={(event) => updateIdeaFields(focusIdea.id, { title: event.target.value || 'Idée sans titre' })}
+            />
+          </label>
+
+          <div className="form-grid compact-grid">
+            <label>
+              Type
+              <select value={focusIdea.type} onChange={(event) => updateIdeaFields(focusIdea.id, { type: event.target.value as IdeaType })}>
+                {ideaTypes.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Statut
+              <select value={focusIdea.status} onChange={(event) => updateIdeaFields(focusIdea.id, { status: event.target.value as IdeaStatus })}>
+                {statuses.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="focus-writing-field">
+            Texte
+            <textarea
+              value={focusIdea.content}
+              onChange={(event) => updateIdeaContent(focusIdea.id, event.target.value)}
+              rows={18}
+            />
+          </label>
+
+          <p className="writing-stats">{countWords(focusIdea.content)} mots · sauvegarde locale automatique</p>
+        </section>
+      )}
     </main>
   )
 }

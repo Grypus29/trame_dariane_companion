@@ -8,6 +8,8 @@ export type NarrativeElementKind = 'personnage' | 'lieu' | 'objet' | 'theme' | '
 
 export type ManuscriptNodeKind = 'chapter' | 'subchapter' | 'block'
 
+export type IdeaLinkKind = 'causal' | 'echo' | 'motif' | 'resonance' | 'tension'
+
 export type Project = {
   id: string
   name: string
@@ -21,6 +23,16 @@ export type MobileIdea = {
   title: string
   content: string
   tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type MobileIdeaLink = {
+  id: string
+  fromIdeaId: string
+  toIdeaId: string
+  kind: IdeaLinkKind
+  note: string
   createdAt: string
   updatedAt: string
 }
@@ -51,6 +63,7 @@ export type MobileState = {
   version: 1
   projects: Project[]
   ideas: MobileIdea[]
+  dedaleLinks: MobileIdeaLink[]
   manuscriptNodes: ManuscriptNode[]
   elements: NarrativeElement[]
 }
