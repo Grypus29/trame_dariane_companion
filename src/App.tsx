@@ -120,6 +120,7 @@ function App() {
   const [elementDescription, setElementDescription] = useState('')
   const [elementTraits, setElementTraits] = useState('')
   const [importMessage, setImportMessage] = useState('')
+  const [manualJson, setManualJson] = useState('')
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -178,6 +179,7 @@ function App() {
       return `${element.name} ${element.description} ${element.traits}`.toLocaleLowerCase().includes(needle)
     })
   }, [elementKindFilter, elementQuery, state.elements])
+  const exportedJson = useMemo(() => JSON.stringify(state, null, 2), [state])
 
   function resetIdeaForm() {
     setEditingIdeaId(null)
@@ -471,13 +473,36 @@ function App() {
   }
 
   function exportState() {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' })
+    const blob = new Blob([exportedJson], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
     link.download = `trame-mobile-${new Date().toISOString().slice(0, 10)}.json`
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  async function copyExportState() {
+    try {
+      await navigator.clipboard.writeText(exportedJson)
+      setImportMessage('JSON copié.')
+    } catch {
+      setManualJson(exportedJson)
+      setImportMessage('Copie directe impossible. Le JSON est affiché ci-dessous.')
+    }
+  }
+
+  function importManualJson() {
+    try {
+      const nextState = parseImportedState(manualJson)
+      setState(nextState)
+      setSelectedProjectId(nextState.projects[0]?.id ?? '')
+      setSelectedBlockId(nextState.manuscriptNodes.find((node) => node.kind === 'block')?.id ?? null)
+      setBlockIdeaId(nextState.ideas[0]?.id ?? '')
+      setImportMessage('Import texte terminé.')
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : 'Import texte impossible.')
+    }
   }
 
   async function importState(file: File | undefined) {
@@ -912,6 +937,9 @@ function App() {
             <button className="primary-action" type="button" onClick={exportState}>
               Exporter le JSON
             </button>
+            <button className="secondary-action" type="button" onClick={() => void copyExportState()}>
+              Copier le JSON
+            </button>
             <button className="secondary-action" type="button" onClick={() => importInputRef.current?.click()}>
               Importer un JSON
             </button>
@@ -923,6 +951,21 @@ function App() {
               type="file"
             />
             {importMessage && <p className="import-message">{importMessage}</p>}
+          </div>
+
+          <div className="exchange-panel">
+            <label>
+              Import texte
+              <textarea
+                value={manualJson}
+                onChange={(event) => setManualJson(event.target.value)}
+                placeholder="Coller ici un export JSON mobile."
+                rows={8}
+              />
+            </label>
+            <button className="secondary-action" type="button" onClick={importManualJson} disabled={!manualJson.trim()}>
+              Importer le texte
+            </button>
           </div>
         </section>
       )}

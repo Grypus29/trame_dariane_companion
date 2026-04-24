@@ -68,7 +68,7 @@ Ecrans actuels :
 - `Dédale` : liste mobile des idees + creation/edition rapide.
 - `Écrire` : plan manuscrit mobile en arborescence `Chapitre` / `Sous-chapitre` / `Bloc`, avec edition du contenu de l'idee liee.
 - `Éléments` : creation/edition des personnages, lieux, objets, themes et concepts.
-- `Paramètres` : export/import JSON local, futur emplacement possible pour un appairage desktop.
+- `Paramètres` : export/import JSON local, copie/collage JSON, futur emplacement possible pour un appairage desktop.
 
 Le prototype contient des donnees d'exemple dans `src/lib/mobileStore.ts`.
 
