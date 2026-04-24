@@ -476,6 +476,7 @@ button:focus-visible {
   border-top: 1px solid var(--line);
   background: rgba(255, 250, 241, 0.94);
   backdrop-filter: blur(16px);
+  transform: translateZ(0);
 }
 
 .bottom-nav button {
