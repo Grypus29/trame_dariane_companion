@@ -65,11 +65,10 @@ Stack :
 - `localStorage` pour le stockage temporaire
 
 Ecrans actuels :
-- `Noter` : capture rapide d'une idee.
-- `Idees` : Dedale simplifie sous forme de liste + recherche.
-- `Textes` : edition de fragments, utilisable avec la dictee du telephone.
-- `Elements` : consultation simple des elements narratifs.
-- `Echange` : export/import JSON local.
+- `Dédale` : liste mobile des idees + creation/edition rapide.
+- `Écrire` : plan manuscrit mobile en arborescence `Chapitre` / `Sous-chapitre` / `Bloc`, avec edition du contenu de l'idee liee.
+- `Éléments` : creation/edition des personnages, lieux, objets, themes et concepts.
+- `Paramètres` : export/import JSON local, futur emplacement possible pour un appairage desktop.
 
 Le prototype contient des donnees d'exemple dans `src/lib/mobileStore.ts`.
 
@@ -83,12 +82,14 @@ type MobileState = {
   version: 1
   projects: Project[]
   ideas: MobileIdea[]
-  texts: MobileText[]
+  manuscriptNodes: ManuscriptNode[]
   elements: NarrativeElement[]
 }
 ```
 
 Ce JSON est le futur point de contact avec le desktop. Tant que le format n'est pas stabilise, il ne faut pas encore ajouter une vraie synchro.
+
+Note 2026-04-25 : le stockage local mobile a ete rapproche du vocabulaire desktop sans figer le futur contrat de transfert. Les anciens `texts` sont migres en idees de type `Fragment` quand ils existent dans le localStorage/import JSON. Le debrief transfert de donnees doit encore decider si le futur format passe en `version: 2` ou s'aligne directement sur les tables desktop.
 
 Principes pour faire evoluer le contrat :
 - incrementer `version` si le format devient incompatible ;
@@ -145,11 +146,11 @@ Mobile-first, tres simple :
 La couleur et la matiere restent proches de l'identite desktop : papier, atelier, brun chaud, calme.
 
 ## Prochaines etapes probables
-1. Tester sur iPhone reel.
-2. Ajuster la capture : champs vraiment utiles, ordre, libelles.
-3. Tester la dictee dans `Textes`.
-4. Decider si `Textes` doit creer des fragments libres ou des brouillons rattaches a une idee.
-5. Stabiliser le JSON exporte.
+1. Tester sur iPhone reel, notamment le zoom Safari et la navigation basse.
+2. Debrief transfert de donnees mobile <-> desktop.
+3. Stabiliser le JSON exporte.
+4. Ajouter une ergonomie mobile plus fine pour l'organisation dans `Écrire` : drag tactile ou commandes de deplacement plus riches.
+5. Etudier les liens du `Dédale` sur mobile via une interaction de recherche/association plutot qu'un graphe.
 6. Ajouter cote desktop un import manuel du JSON mobile, uniquement quand le format est clair.
 
 ## Obsidian / vault

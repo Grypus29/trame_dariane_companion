@@ -1,23 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { loadMobileState, parseImportedState, saveMobileState } from './lib/mobileStore'
-import type { IdeaType, MobileIdea, MobileState, MobileTab, MobileText } from './types'
+import type {
+  IdeaStatus,
+  IdeaType,
+  ManuscriptNode,
+  MobileIdea,
+  MobileState,
+  MobileTab,
+  NarrativeElement,
+  NarrativeElementKind,
+} from './types'
 
 const tabs: Array<{ id: MobileTab; label: string; icon: string }> = [
-  { id: 'capture', label: 'Noter', icon: '+' },
-  { id: 'inbox', label: 'Idees', icon: '≡' },
-  { id: 'texts', label: 'Textes', icon: '¶' },
-  { id: 'elements', label: 'Elements', icon: '◇' },
-  { id: 'exchange', label: 'Echange', icon: '⇅' },
+  { id: 'dedale', label: 'Dédale', icon: '◇' },
+  { id: 'ecrire', label: 'Écrire', icon: '¶' },
+  { id: 'elements', label: 'Éléments', icon: '◆' },
+  { id: 'settings', label: 'Paramètres', icon: '⚙' },
 ]
 
 const ideaTypes: Array<{ id: IdeaType; label: string }> = [
-  { id: 'scene', label: 'Scene' },
-  { id: 'character', label: 'Personnage' },
-  { id: 'place', label: 'Lieu' },
-  { id: 'object', label: 'Objet' },
-  { id: 'theme', label: 'Theme' },
-  { id: 'note', label: 'Note' },
+  { id: 'scene', label: 'Scène' },
+  { id: 'fragment', label: 'Fragment' },
+  { id: 'motif', label: 'Motif' },
+  { id: 'revelation', label: 'Révélation' },
+]
+
+const statuses: Array<{ id: IdeaStatus; label: string }> = [
+  { id: 'idea', label: 'Idée' },
+  { id: 'draft', label: 'Brouillon' },
+  { id: 'written', label: 'Rédigé' },
+  { id: 'reviewed', label: 'Relu' },
+]
+
+const elementKinds: Array<{ id: NarrativeElementKind; label: string }> = [
+  { id: 'personnage', label: 'Personnage' },
+  { id: 'lieu', label: 'Lieu' },
+  { id: 'objet', label: 'Objet' },
+  { id: 'theme', label: 'Thème' },
+  { id: 'concept', label: 'Concept' },
 ]
 
 function createId(prefix: string) {
@@ -34,22 +55,48 @@ function countWords(value: string) {
 
 function getProjectName(state: MobileState, projectId: string | null) {
   if (!projectId) {
-    return 'Boite libre'
+    return 'Dédale'
   }
 
   return state.projects.find((project) => project.id === projectId)?.name ?? 'Projet inconnu'
 }
 
+function getIdeaTypeLabel(type: IdeaType) {
+  return ideaTypes.find((item) => item.id === type)?.label ?? type
+}
+
+function getStatusLabel(status: IdeaStatus) {
+  return statuses.find((item) => item.id === status)?.label ?? status
+}
+
+function getElementKindLabel(kind: NarrativeElementKind) {
+  return elementKinds.find((item) => item.id === kind)?.label ?? kind
+}
+
+function sortByOrder<T extends { sortOrder: number; id: string }>(items: T[]) {
+  return [...items].sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id))
+}
+
 function App() {
   const [state, setState] = useState<MobileState>(() => loadMobileState())
-  const [activeTab, setActiveTab] = useState<MobileTab>('capture')
-  const [title, setTitle] = useState('')
-  const [content, setContent] = useState('')
-  const [projectId, setProjectId] = useState<string>('roman-julie')
-  const [type, setType] = useState<IdeaType>('note')
-  const [tags, setTags] = useState('')
+  const [activeTab, setActiveTab] = useState<MobileTab>('dedale')
   const [query, setQuery] = useState('')
-  const [selectedTextId, setSelectedTextId] = useState(state.texts[0]?.id ?? '')
+  const [editingIdeaId, setEditingIdeaId] = useState<string | null>(null)
+  const [ideaTitle, setIdeaTitle] = useState('')
+  const [ideaContent, setIdeaContent] = useState('')
+  const [ideaType, setIdeaType] = useState<IdeaType>('scene')
+  const [ideaStatus, setIdeaStatus] = useState<IdeaStatus>('idea')
+  const [ideaTags, setIdeaTags] = useState('')
+  const [selectedProjectId, setSelectedProjectId] = useState(state.projects[0]?.id ?? '')
+  const [selectedParentId, setSelectedParentId] = useState<string | null>(null)
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(state.manuscriptNodes.find((node) => node.kind === 'block')?.id ?? null)
+  const [sectionTitle, setSectionTitle] = useState('')
+  const [blockIdeaId, setBlockIdeaId] = useState(state.ideas[0]?.id ?? '')
+  const [editingElementId, setEditingElementId] = useState<string | null>(null)
+  const [elementKind, setElementKind] = useState<NarrativeElementKind>('personnage')
+  const [elementName, setElementName] = useState('')
+  const [elementDescription, setElementDescription] = useState('')
+  const [elementTraits, setElementTraits] = useState('')
   const [importMessage, setImportMessage] = useState('')
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -70,67 +117,235 @@ function App() {
     })
   }, [query, state.ideas])
 
-  const selectedText = state.texts.find((text) => text.id === selectedTextId) ?? state.texts[0]
+  const ideaById = useMemo(() => new Map(state.ideas.map((idea) => [idea.id, idea])), [state.ideas])
+  const nodesByParent = useMemo(() => {
+    const map = new Map<string | null, ManuscriptNode[]>()
+    for (const node of state.manuscriptNodes) {
+      const current = map.get(node.parentId) ?? []
+      current.push(node)
+      map.set(node.parentId, current)
+    }
 
-  function addIdea() {
-    const safeTitle = title.trim()
-    const safeContent = content.trim()
+    for (const [parentId, nodes] of map) {
+      map.set(parentId, sortByOrder(nodes))
+    }
 
-    if (!safeTitle && !safeContent) {
+    return map
+  }, [state.manuscriptNodes])
+
+  const selectedBlock = selectedBlockId ? state.manuscriptNodes.find((node) => node.id === selectedBlockId && node.kind === 'block') : null
+  const selectedBlockIdea = selectedBlock?.ideaId ? ideaById.get(selectedBlock.ideaId) ?? null : null
+  const sectionOptions = state.manuscriptNodes.filter((node) => node.kind !== 'block')
+
+  function resetIdeaForm() {
+    setEditingIdeaId(null)
+    setIdeaTitle('')
+    setIdeaContent('')
+    setIdeaType('scene')
+    setIdeaStatus('idea')
+    setIdeaTags('')
+  }
+
+  function openIdeaForm(idea: MobileIdea) {
+    setEditingIdeaId(idea.id)
+    setIdeaTitle(idea.title)
+    setIdeaContent(idea.content)
+    setIdeaType(idea.type)
+    setIdeaStatus(idea.status)
+    setIdeaTags(idea.tags.join(', '))
+    setActiveTab('dedale')
+  }
+
+  function saveIdea() {
+    const title = ideaTitle.trim()
+    const content = ideaContent.trim()
+
+    if (!title && !content) {
       return
     }
 
     const date = new Date().toISOString()
-    const idea: MobileIdea = {
-      id: createId('idea'),
-      projectId: projectId === 'free' ? null : projectId,
-      type,
-      title: safeTitle || 'Idee sans titre',
-      content: safeContent,
-      tags: tags
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter(Boolean),
+    const tags = ideaTags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+
+    if (editingIdeaId) {
+      setState((current) => ({
+        ...current,
+        ideas: current.ideas.map((idea) =>
+          idea.id === editingIdeaId
+            ? { ...idea, title: title || 'Idée sans titre', content, type: ideaType, status: ideaStatus, tags, updatedAt: date }
+            : idea,
+        ),
+      }))
+    } else {
+      const idea: MobileIdea = {
+        id: createId('idea'),
+        projectId: selectedProjectId || null,
+        type: ideaType,
+        status: ideaStatus,
+        title: title || 'Idée sans titre',
+        content,
+        tags,
+        createdAt: date,
+        updatedAt: date,
+      }
+
+      setState((current) => ({
+        ...current,
+        ideas: [idea, ...current.ideas],
+      }))
+      setBlockIdeaId(idea.id)
+    }
+
+    resetIdeaForm()
+  }
+
+  function updateIdeaContent(ideaId: string, nextContent: string) {
+    setState((current) => ({
+      ...current,
+      ideas: current.ideas.map((idea) =>
+        idea.id === ideaId ? { ...idea, content: nextContent, status: idea.status === 'idea' ? 'draft' : idea.status, updatedAt: new Date().toISOString() } : idea,
+      ),
+    }))
+  }
+
+  function createSection(kind: 'chapter' | 'subchapter') {
+    const title = sectionTitle.trim()
+
+    if (!title) {
+      return
+    }
+
+    const date = new Date().toISOString()
+    const parentId = kind === 'chapter' ? null : selectedParentId
+    const siblings = nodesByParent.get(parentId) ?? []
+    const node: ManuscriptNode = {
+      id: createId(kind),
+      projectId: selectedProjectId,
+      parentId,
+      kind,
+      title,
+      ideaId: null,
+      sortOrder: siblings.length,
       createdAt: date,
       updatedAt: date,
     }
 
     setState((current) => ({
       ...current,
-      ideas: [idea, ...current.ideas],
+      manuscriptNodes: [...current.manuscriptNodes, node],
     }))
-    setTitle('')
-    setContent('')
-    setTags('')
-    setType('note')
-    setActiveTab('inbox')
+    setSelectedParentId(node.id)
+    setSectionTitle('')
   }
 
-  function updateText(textId: string, nextContent: string) {
-    setState((current) => ({
-      ...current,
-      texts: current.texts.map((text) =>
-        text.id === textId ? { ...text, content: nextContent, updatedAt: new Date().toISOString() } : text,
-      ),
-    }))
-  }
+  function addBlock() {
+    if (!blockIdeaId) {
+      return
+    }
 
-  function addText() {
     const date = new Date().toISOString()
-    const text: MobileText = {
-      id: createId('text'),
-      projectId: projectId === 'free' ? null : projectId,
-      title: 'Nouveau fragment',
-      content: '',
+    const parentId = selectedParentId
+    const siblings = nodesByParent.get(parentId) ?? []
+    const node: ManuscriptNode = {
+      id: createId('block'),
+      projectId: selectedProjectId,
+      parentId,
+      kind: 'block',
+      title: '',
+      ideaId: blockIdeaId,
+      sortOrder: siblings.length,
+      createdAt: date,
       updatedAt: date,
     }
 
     setState((current) => ({
       ...current,
-      texts: [text, ...current.texts],
+      manuscriptNodes: [...current.manuscriptNodes, node],
     }))
-    setSelectedTextId(text.id)
-    setActiveTab('texts')
+    setSelectedBlockId(node.id)
+  }
+
+  function moveNode(nodeId: string, direction: -1 | 1) {
+    setState((current) => {
+      const node = current.manuscriptNodes.find((item) => item.id === nodeId)
+      if (!node) return current
+
+      const siblings = sortByOrder(current.manuscriptNodes.filter((item) => item.parentId === node.parentId))
+      const index = siblings.findIndex((item) => item.id === nodeId)
+      const targetIndex = index + direction
+
+      if (index < 0 || targetIndex < 0 || targetIndex >= siblings.length) return current
+
+      const next = current.manuscriptNodes.map((item) => ({ ...item }))
+      const left = next.find((item) => item.id === siblings[index].id)
+      const right = next.find((item) => item.id === siblings[targetIndex].id)
+      if (!left || !right) return current
+
+      const swap = left.sortOrder
+      left.sortOrder = right.sortOrder
+      right.sortOrder = swap
+      left.updatedAt = new Date().toISOString()
+      right.updatedAt = left.updatedAt
+
+      return { ...current, manuscriptNodes: next }
+    })
+  }
+
+  function resetElementForm() {
+    setEditingElementId(null)
+    setElementKind('personnage')
+    setElementName('')
+    setElementDescription('')
+    setElementTraits('')
+  }
+
+  function openElementForm(element: NarrativeElement) {
+    setEditingElementId(element.id)
+    setElementKind(element.kind)
+    setElementName(element.name)
+    setElementDescription(element.description)
+    setElementTraits(element.traits)
+  }
+
+  function saveElement() {
+    const name = elementName.trim()
+
+    if (!name) {
+      return
+    }
+
+    const date = new Date().toISOString()
+
+    if (editingElementId) {
+      setState((current) => ({
+        ...current,
+        elements: current.elements.map((element) =>
+          element.id === editingElementId
+            ? { ...element, kind: elementKind, name, description: elementDescription.trim(), traits: elementTraits.trim(), updatedAt: date }
+            : element,
+        ),
+      }))
+    } else {
+      const element: NarrativeElement = {
+        id: createId('element'),
+        projectId: selectedProjectId || null,
+        kind: elementKind,
+        name,
+        description: elementDescription.trim(),
+        traits: elementTraits.trim(),
+        updatedAt: date,
+      }
+
+      setState((current) => ({
+        ...current,
+        elements: [element, ...current.elements],
+      }))
+    }
+
+    resetElementForm()
   }
 
   function exportState() {
@@ -152,11 +367,53 @@ function App() {
       const rawState = await file.text()
       const nextState = parseImportedState(rawState)
       setState(nextState)
-      setSelectedTextId(nextState.texts[0]?.id ?? '')
-      setImportMessage('Import termine.')
+      setSelectedProjectId(nextState.projects[0]?.id ?? '')
+      setSelectedBlockId(nextState.manuscriptNodes.find((node) => node.kind === 'block')?.id ?? null)
+      setBlockIdeaId(nextState.ideas[0]?.id ?? '')
+      setImportMessage('Import terminé.')
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : 'Import impossible.')
     }
+  }
+
+  function renderNodes(parentId: string | null, level = 0) {
+    const nodes = nodesByParent.get(parentId) ?? []
+
+    if (nodes.length === 0 && parentId === null) {
+      return <p className="empty-copy">Aucun chapitre pour le moment.</p>
+    }
+
+    return (
+      <div className="outline-list">
+        {nodes.map((node) => {
+          const idea = node.ideaId ? ideaById.get(node.ideaId) : null
+          const isSection = node.kind !== 'block'
+          const label = isSection ? node.title : idea?.title ?? 'Bloc sans idée'
+
+          return (
+            <article className={`outline-row level-${Math.min(level, 2)} ${selectedBlockId === node.id ? 'active' : ''}`} key={node.id}>
+              <button
+                className="outline-main"
+                onClick={() => {
+                  if (isSection) setSelectedParentId(node.id)
+                  else setSelectedBlockId(node.id)
+                }}
+                type="button"
+              >
+                <span className="outline-kind">{node.kind === 'chapter' ? 'Chapitre' : node.kind === 'subchapter' ? 'Sous-chapitre' : 'Bloc'}</span>
+                <strong>{label}</strong>
+                {idea && <span>{getIdeaTypeLabel(idea.type)} · {countWords(idea.content)} mots</span>}
+              </button>
+              <div className="move-actions">
+                <button aria-label={`Monter ${label}`} onClick={() => moveNode(node.id, -1)} type="button">↑</button>
+                <button aria-label={`Descendre ${label}`} onClick={() => moveNode(node.id, 1)} type="button">↓</button>
+              </div>
+              {isSection && renderNodes(node.id, level + 1)}
+            </article>
+          )
+        })}
+      </div>
+    )
   }
 
   return (
@@ -166,97 +423,99 @@ function App() {
           <p className="eyebrow">Compagnon mobile</p>
           <h1>Trame d'Ariane</h1>
         </div>
-        <button className="header-action" type="button" onClick={addText}>
-          Dicter
+        <button
+          className="header-action"
+          type="button"
+          onClick={() => {
+            setActiveTab('dedale')
+            resetIdeaForm()
+          }}
+        >
+          + Noter
         </button>
       </header>
 
-      <section className="status-strip" aria-label="Resume local">
-        <span>{state.ideas.length} idees</span>
-        <span>{state.texts.length} textes</span>
-        <span>{state.elements.length} elements</span>
+      <section className="status-strip" aria-label="Résumé local">
+        <span>{state.ideas.length} idées</span>
+        <span>{state.manuscriptNodes.filter((node) => node.kind === 'block').length} blocs</span>
+        <span>{state.elements.length} éléments</span>
       </section>
 
-      {activeTab === 'capture' && (
-        <section className="screen capture-screen" aria-labelledby="capture-title">
+      {activeTab === 'dedale' && (
+        <section className="screen" aria-labelledby="dedale-title">
           <div className="screen-title">
-            <p className="eyebrow">Capture rapide</p>
-            <h2 id="capture-title">Noter avant d'oublier</h2>
+            <p className="eyebrow">Idées libres et réserve</p>
+            <h2 id="dedale-title">Dédale</h2>
           </div>
 
-          <label>
-            Titre
-            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. Une scene dans le train" />
-          </label>
-
-          <label>
-            Idee ou fragment
-            <textarea
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              placeholder="Le clavier vocal du telephone peut servir ici pour dicter un passage brut."
-              rows={8}
-            />
-          </label>
-
-          <div className="form-grid">
+          <div className="form-panel">
             <label>
-              Projet
-              <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                {state.projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-                <option value="free">Boite libre</option>
-              </select>
+              Titre
+              <input value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Une scène, un détail, une image..." />
             </label>
 
             <label>
-              Type
-              <select value={type} onChange={(event) => setType(event.target.value as IdeaType)}>
-                {ideaTypes.map((ideaType) => (
-                  <option key={ideaType.id} value={ideaType.id}>
-                    {ideaType.label}
-                  </option>
-                ))}
-              </select>
+              Contenu
+              <textarea
+                value={ideaContent}
+                onChange={(event) => setIdeaContent(event.target.value)}
+                placeholder="La dictée du téléphone peut servir ici pour capturer un brouillon brut."
+                rows={7}
+              />
             </label>
-          </div>
 
-          <label>
-            Tags
-            <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="separes par des virgules" />
-          </label>
+            <div className="form-grid">
+              <label>
+                Type
+                <select value={ideaType} onChange={(event) => setIdeaType(event.target.value as IdeaType)}>
+                  {ideaTypes.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+              </label>
 
-          <button className="primary-action" type="button" onClick={addIdea}>
-            Envoyer vers la boite d'idees
-          </button>
-        </section>
-      )}
+              <label>
+                Statut
+                <select value={ideaStatus} onChange={(event) => setIdeaStatus(event.target.value as IdeaStatus)}>
+                  {statuses.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
-      {activeTab === 'inbox' && (
-        <section className="screen" aria-labelledby="inbox-title">
-          <div className="screen-title">
-            <p className="eyebrow">Dedale en liste</p>
-            <h2 id="inbox-title">Idees capturees</h2>
+            <label>
+              Tags
+              <input value={ideaTags} onChange={(event) => setIdeaTags(event.target.value)} placeholder="séparés par des virgules" />
+            </label>
+
+            <div className="action-row">
+              <button className="primary-action" type="button" onClick={saveIdea}>
+                {editingIdeaId ? 'Enregistrer' : 'Ajouter'}
+              </button>
+              {editingIdeaId && (
+                <button className="secondary-action" type="button" onClick={resetIdeaForm}>
+                  Annuler
+                </button>
+              )}
+            </div>
           </div>
 
           <label>
             Recherche
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Mot, tag, scene..." />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Mot, tag, scène..." />
           </label>
 
           <div className="idea-list">
             {filteredIdeas.map((idea) => (
               <article className="idea-card" key={idea.id}>
-                <div>
+                <button className="card-button" onClick={() => openIdeaForm(idea)} type="button">
                   <p className="idea-meta">
-                    {getProjectName(state, idea.projectId)} · {ideaTypes.find((item) => item.id === idea.type)?.label}
+                    {getProjectName(state, idea.projectId)} · {getIdeaTypeLabel(idea.type)} · {getStatusLabel(idea.status)}
                   </p>
                   <h3>{idea.title}</h3>
                   <p>{idea.content || 'Aucun contenu pour le moment.'}</p>
-                </div>
+                </button>
                 {idea.tags.length > 0 && (
                   <div className="tag-row">
                     {idea.tags.map((tag) => (
@@ -270,75 +529,147 @@ function App() {
         </section>
       )}
 
-      {activeTab === 'texts' && selectedText && (
-        <section className="screen writing-screen" aria-labelledby="texts-title">
+      {activeTab === 'ecrire' && (
+        <section className="screen writing-screen" aria-labelledby="ecrire-title">
           <div className="screen-title">
-            <p className="eyebrow">Redaction legere</p>
-            <h2 id="texts-title">{selectedText.title}</h2>
+            <p className="eyebrow">Plan du livre et texte assemblé</p>
+            <h2 id="ecrire-title">Écrire</h2>
           </div>
 
-          <div className="text-switcher" role="tablist" aria-label="Fragments">
-            {state.texts.map((text) => (
-              <button
-                aria-selected={text.id === selectedText.id}
-                className={text.id === selectedText.id ? 'active' : ''}
-                key={text.id}
-                onClick={() => setSelectedTextId(text.id)}
-                role="tab"
-                type="button"
-              >
-                {text.title}
+          <div className="form-panel">
+            <label>
+              Titre de section
+              <input value={sectionTitle} onChange={(event) => setSectionTitle(event.target.value)} placeholder="Chapitre 2, Le départ..." />
+            </label>
+
+            <label>
+              Parent
+              <select value={selectedParentId ?? ''} onChange={(event) => setSelectedParentId(event.target.value || null)}>
+                <option value="">Racine du manuscrit</option>
+                {sectionOptions.map((node) => (
+                  <option key={node.id} value={node.id}>{node.title || 'Sans titre'}</option>
+                ))}
+              </select>
+            </label>
+
+            <div className="action-row">
+              <button className="secondary-action" type="button" onClick={() => createSection('chapter')}>
+                Créer chapitre
               </button>
-            ))}
+              <button className="secondary-action" type="button" onClick={() => createSection('subchapter')} disabled={!selectedParentId}>
+                Créer sous-chapitre
+              </button>
+            </div>
+
+            <label>
+              Idée à ajouter comme bloc
+              <select value={blockIdeaId} onChange={(event) => setBlockIdeaId(event.target.value)}>
+                {state.ideas.map((idea) => (
+                  <option key={idea.id} value={idea.id}>{idea.title}</option>
+                ))}
+              </select>
+            </label>
+
+            <button className="primary-action" type="button" onClick={addBlock} disabled={!blockIdeaId}>
+              Ajouter comme bloc
+            </button>
           </div>
 
-          <label>
-            Fragment
-            <textarea
-              className="writing-pad"
-              value={selectedText.content}
-              onChange={(event) => updateText(selectedText.id, event.target.value)}
-              rows={14}
-            />
-          </label>
+          <div className="outline-panel">{renderNodes(null)}</div>
 
-          <p className="writing-stats">{countWords(selectedText.content)} mots · sauvegarde locale automatique</p>
+          {selectedBlockIdea && (
+            <div className="editor-panel">
+              <div className="screen-title">
+                <p className="eyebrow">{getIdeaTypeLabel(selectedBlockIdea.type)} · {getStatusLabel(selectedBlockIdea.status)}</p>
+                <h2>{selectedBlockIdea.title}</h2>
+              </div>
+              <textarea
+                className="writing-pad"
+                value={selectedBlockIdea.content}
+                onChange={(event) => updateIdeaContent(selectedBlockIdea.id, event.target.value)}
+                rows={14}
+              />
+              <p className="writing-stats">{countWords(selectedBlockIdea.content)} mots · sauvegarde locale automatique</p>
+            </div>
+          )}
         </section>
       )}
 
       {activeTab === 'elements' && (
         <section className="screen" aria-labelledby="elements-title">
           <div className="screen-title">
-            <p className="eyebrow">Memoire du recit</p>
-            <h2 id="elements-title">Elements narratifs</h2>
+            <p className="eyebrow">Personnages, lieux, objets et thèmes</p>
+            <h2 id="elements-title">Éléments</h2>
+          </div>
+
+          <div className="form-panel">
+            <div className="form-grid">
+              <label>
+                Type
+                <select value={elementKind} onChange={(event) => setElementKind(event.target.value as NarrativeElementKind)}>
+                  {elementKinds.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Nom
+                <input value={elementName} onChange={(event) => setElementName(event.target.value)} placeholder="Mila, le chapiteau..." />
+              </label>
+            </div>
+
+            <label>
+              Description
+              <textarea value={elementDescription} onChange={(event) => setElementDescription(event.target.value)} rows={5} />
+            </label>
+
+            <label>
+              Traits
+              <textarea value={elementTraits} onChange={(event) => setElementTraits(event.target.value)} rows={4} />
+            </label>
+
+            <div className="action-row">
+              <button className="primary-action" type="button" onClick={saveElement}>
+                {editingElementId ? 'Enregistrer' : 'Créer élément'}
+              </button>
+              {editingElementId && (
+                <button className="secondary-action" type="button" onClick={resetElementForm}>
+                  Annuler
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="element-list">
             {state.elements.map((element) => (
               <article className="element-card" key={element.id}>
-                <p className="idea-meta">{element.kind}</p>
-                <h3>{element.name}</h3>
-                <p>{element.notes}</p>
+                <button className="card-button" onClick={() => openElementForm(element)} type="button">
+                  <p className="idea-meta">{getElementKindLabel(element.kind)}</p>
+                  <h3>{element.name}</h3>
+                  <p>{element.description || 'Aucune description pour le moment.'}</p>
+                  {element.traits && <p className="element-traits">{element.traits}</p>}
+                </button>
               </article>
             ))}
           </div>
         </section>
       )}
 
-      {activeTab === 'exchange' && (
-        <section className="screen" aria-labelledby="exchange-title">
+      {activeTab === 'settings' && (
+        <section className="screen" aria-labelledby="settings-title">
           <div className="screen-title">
             <p className="eyebrow">Passerelle desktop</p>
-            <h2 id="exchange-title">Exporter ou importer</h2>
+            <h2 id="settings-title">Paramètres</h2>
           </div>
 
           <div className="exchange-panel">
             <p>
-              Pour le prototype, le telephone garde ses donnees localement. Le JSON servira plus tard de contrat avec
-              l'application desktop.
+              Cette zone garde l'export/import JSON du prototype. Elle pourra accueillir plus tard un appairage avec
+              l'ordinateur, par exemple via QR code.
             </p>
             <button className="primary-action" type="button" onClick={exportState}>
-              Exporter le carnet
+              Exporter le JSON
             </button>
             <button className="secondary-action" type="button" onClick={() => importInputRef.current?.click()}>
               Importer un JSON

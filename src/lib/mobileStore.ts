@@ -1,20 +1,21 @@
-import type { MobileState } from '../types'
+import type { IdeaStatus, IdeaType, ManuscriptNode, MobileIdea, MobileState, NarrativeElement } from '../types'
 
 const STORAGE_KEY = 'trame-dariane-mobile-state-v1'
 
 const now = new Date().toISOString()
 
+const DESKTOP_IDEA_TYPES: IdeaType[] = ['scene', 'fragment', 'motif', 'revelation']
+const DESKTOP_STATUSES: IdeaStatus[] = ['idea', 'draft', 'written', 'reviewed']
+
 export const initialState: MobileState = {
   version: 1,
-  projects: [
-    { id: 'roman-julie', name: 'Premier livre' },
-    { id: 'inbox', name: 'Boite libre' },
-  ],
+  projects: [{ id: 'roman-julie', name: 'Premier livre' }],
   ideas: [
     {
       id: 'idea-opening',
       projectId: 'roman-julie',
       type: 'scene',
+      status: 'draft',
       title: 'Ouverture sur le chapiteau vide',
       content:
         "Une scene courte, presque silencieuse. Le personnage principal entre seule dans le chapiteau avant l'aube.",
@@ -24,8 +25,9 @@ export const initialState: MobileState = {
     },
     {
       id: 'idea-motif',
-      projectId: null,
-      type: 'theme',
+      projectId: 'roman-julie',
+      type: 'motif',
+      status: 'idea',
       title: 'La peur de tomber',
       content:
         'Noter le motif sans savoir encore ou il ira : chute physique, chute symbolique, confiance donnee aux autres.',
@@ -33,14 +35,40 @@ export const initialState: MobileState = {
       createdAt: now,
       updatedAt: now,
     },
-  ],
-  texts: [
     {
-      id: 'text-draft-1',
+      id: 'idea-draft-1',
       projectId: 'roman-julie',
+      type: 'fragment',
+      status: 'draft',
       title: 'Brouillon dicte',
       content:
         "Je veux pouvoir dicter ici une scene brute depuis le telephone, puis la reprendre plus tard sur l'ordinateur.",
+      tags: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ],
+  manuscriptNodes: [
+    {
+      id: 'chapter-1',
+      projectId: 'roman-julie',
+      parentId: null,
+      kind: 'chapter',
+      title: 'Chapitre 1',
+      ideaId: null,
+      sortOrder: 0,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'block-draft-1',
+      projectId: 'roman-julie',
+      parentId: 'chapter-1',
+      kind: 'block',
+      title: '',
+      ideaId: 'idea-draft-1',
+      sortOrder: 0,
+      createdAt: now,
       updatedAt: now,
     },
   ],
@@ -50,7 +78,8 @@ export const initialState: MobileState = {
       projectId: 'roman-julie',
       kind: 'personnage',
       name: 'Mila',
-      notes: 'Voltigeuse. Elle sait faire confiance au corps, moins aux mots.',
+      description: 'Voltigeuse. Elle sait faire confiance au corps, moins aux mots.',
+      traits: '',
       updatedAt: now,
     },
     {
@@ -58,10 +87,116 @@ export const initialState: MobileState = {
       projectId: 'roman-julie',
       kind: 'lieu',
       name: 'Le chapiteau',
-      notes: 'Lieu refuge, lieu de vertige, lieu de memoire.',
+      description: 'Lieu refuge, lieu de vertige, lieu de memoire.',
+      traits: '',
       updatedAt: now,
     },
   ],
+}
+
+function normalizeIdeaType(value: unknown): IdeaType {
+  if (typeof value === 'string' && DESKTOP_IDEA_TYPES.includes(value as IdeaType)) {
+    return value as IdeaType
+  }
+
+  if (value === 'theme') return 'motif'
+  return 'fragment'
+}
+
+function normalizeStatus(value: unknown): IdeaStatus {
+  if (typeof value === 'string' && DESKTOP_STATUSES.includes(value as IdeaStatus)) {
+    return value as IdeaStatus
+  }
+
+  return 'idea'
+}
+
+function normalizeIdea(value: Partial<MobileIdea> & { notes?: string }, index: number): MobileIdea {
+  const date = typeof value.updatedAt === 'string' ? value.updatedAt : now
+
+  return {
+    id: typeof value.id === 'string' ? value.id : `idea-import-${index}`,
+    projectId: typeof value.projectId === 'string' || value.projectId === null ? value.projectId : 'roman-julie',
+    type: normalizeIdeaType(value.type),
+    status: normalizeStatus(value.status),
+    title: typeof value.title === 'string' && value.title.trim() ? value.title : 'Idee sans titre',
+    content: typeof value.content === 'string' ? value.content : '',
+    tags: Array.isArray(value.tags) ? value.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+    createdAt: typeof value.createdAt === 'string' ? value.createdAt : date,
+    updatedAt: date,
+  }
+}
+
+function normalizeElement(value: Partial<NarrativeElement> & { notes?: string }, index: number): NarrativeElement {
+  const kind = value.kind === 'personnage' || value.kind === 'lieu' || value.kind === 'objet' || value.kind === 'theme' || value.kind === 'concept'
+    ? value.kind
+    : 'concept'
+
+  return {
+    id: typeof value.id === 'string' ? value.id : `element-import-${index}`,
+    projectId: typeof value.projectId === 'string' || value.projectId === null ? value.projectId : 'roman-julie',
+    kind,
+    name: typeof value.name === 'string' && value.name.trim() ? value.name : 'Element sans nom',
+    description: typeof value.description === 'string' ? value.description : value.notes ?? '',
+    traits: typeof value.traits === 'string' ? value.traits : '',
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : now,
+  }
+}
+
+function normalizeNode(value: Partial<ManuscriptNode>, index: number): ManuscriptNode | null {
+  if (value.kind !== 'chapter' && value.kind !== 'subchapter' && value.kind !== 'block') {
+    return null
+  }
+
+  return {
+    id: typeof value.id === 'string' ? value.id : `node-import-${index}`,
+    projectId: typeof value.projectId === 'string' ? value.projectId : 'roman-julie',
+    parentId: typeof value.parentId === 'string' || value.parentId === null ? value.parentId : null,
+    kind: value.kind,
+    title: typeof value.title === 'string' ? value.title : '',
+    ideaId: typeof value.ideaId === 'string' || value.ideaId === null ? value.ideaId : null,
+    sortOrder: typeof value.sortOrder === 'number' ? value.sortOrder : index,
+    createdAt: typeof value.createdAt === 'string' ? value.createdAt : now,
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : now,
+  }
+}
+
+function normalizeState(parsed: Partial<MobileState> & { texts?: Array<{ id?: string; projectId?: string | null; title?: string; content?: string; updatedAt?: string }> }): MobileState {
+  const projects = Array.isArray(parsed.projects) && parsed.projects.length > 0 ? parsed.projects : initialState.projects
+  const ideas = Array.isArray(parsed.ideas) ? parsed.ideas.map(normalizeIdea) : initialState.ideas
+
+  if (Array.isArray(parsed.texts)) {
+    for (const text of parsed.texts) {
+      if (typeof text.id !== 'string' || ideas.some((idea) => idea.id === text.id)) continue
+      ideas.push(
+        normalizeIdea(
+          {
+            id: text.id,
+            projectId: text.projectId ?? 'roman-julie',
+            type: 'fragment',
+            status: 'draft',
+            title: text.title ?? 'Fragment',
+            content: text.content ?? '',
+            tags: [],
+            updatedAt: text.updatedAt,
+          },
+          ideas.length,
+        ),
+      )
+    }
+  }
+
+  const manuscriptNodes = Array.isArray(parsed.manuscriptNodes)
+    ? parsed.manuscriptNodes.map(normalizeNode).filter((node): node is ManuscriptNode => node !== null)
+    : initialState.manuscriptNodes
+
+  return {
+    version: 1,
+    projects,
+    ideas,
+    manuscriptNodes,
+    elements: Array.isArray(parsed.elements) ? parsed.elements.map(normalizeElement) : initialState.elements,
+  }
 }
 
 export function loadMobileState(): MobileState {
@@ -78,13 +213,7 @@ export function loadMobileState(): MobileState {
       return initialState
     }
 
-    return {
-      version: 1,
-      projects: Array.isArray(parsed.projects) ? parsed.projects : initialState.projects,
-      ideas: Array.isArray(parsed.ideas) ? parsed.ideas : initialState.ideas,
-      texts: Array.isArray(parsed.texts) ? parsed.texts : initialState.texts,
-      elements: Array.isArray(parsed.elements) ? parsed.elements : initialState.elements,
-    }
+    return normalizeState(parsed)
   } catch {
     return initialState
   }
@@ -101,11 +230,5 @@ export function parseImportedState(rawState: string): MobileState {
     throw new Error("Le fichier n'est pas un export mobile compatible.")
   }
 
-  return {
-    version: 1,
-    projects: Array.isArray(parsed.projects) ? parsed.projects : [],
-    ideas: Array.isArray(parsed.ideas) ? parsed.ideas : [],
-    texts: Array.isArray(parsed.texts) ? parsed.texts : [],
-    elements: Array.isArray(parsed.elements) ? parsed.elements : [],
-  }
+  return normalizeState(parsed)
 }

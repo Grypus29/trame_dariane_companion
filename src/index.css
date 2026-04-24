@@ -27,13 +27,24 @@
 }
 
 html {
+  width: 100%;
+  max-width: 100%;
   overflow-x: hidden;
   background: var(--page);
 }
 
 body {
+  width: 100%;
+  max-width: 100%;
   min-width: 320px;
   margin: 0;
+  overflow-x: hidden;
+  font-size: 16px;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
   overflow-x: hidden;
 }
 
