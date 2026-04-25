@@ -215,13 +215,31 @@ La discussion mobile peut maintenant brancher l'app compagnon sur ces routes.
 
 ### Appairage
 
-Le desktop affiche un QR code contenant une URL du type :
+Ancien comportement implemente cote desktop : le QR code contient directement une URL du type :
 
 ```text
 http://<ip-locale>:<port>/pair/claim?token=<token>
 ```
 
-Le mobile doit appeler :
+Ce flux fonctionne seulement en copier/coller. Si l'iPhone scanne ce QR avec l'app Camera, Safari ouvre directement l'endpoint desktop et affiche la reponse JSON hors de la PWA.
+
+Mise a jour mobile du 2026-04-25 : le mobile detecte maintenant automatiquement un parametre `?pair=...` au chargement de la PWA. Il faut donc modifier le QR desktop pour ouvrir l'app mobile, pas l'endpoint `/pair/claim` direct.
+
+Nouveau QR attendu cote desktop en V1 dev :
+
+```text
+http://<ip-locale>:5173/?pair=<url-encode(http://<ip-locale>:<port>/pair/claim?token=<token>)>
+```
+
+Exemple :
+
+```text
+http://192.168.50.73:5173/?pair=http%3A%2F%2F192.168.50.73%3A48973%2Fpair%2Fclaim%3Ftoken%3Dabc
+```
+
+Le port `5173` correspond au serveur Vite mobile pendant le developpement. Plus tard, il faudra remplacer cette base par l'URL stable de distribution de la PWA si elle change.
+
+Le mobile appellera ensuite lui-meme :
 
 ```text
 GET /pair/claim?token=<token>&deviceId=<deviceId>
@@ -342,7 +360,9 @@ Points de vigilance cote desktop :
 - le serveur lit `sqlite:trame.db` via le dossier `app_config_dir`, comme `tauri-plugin-sql` ;
 - les nouvelles idees mobiles sans ID desktop sont creees comme idees du Dedale projet (`in_pool=1`) ;
 - le mobile ne doit pas inventer des IDs desktop numeriques pour les nouvelles entites ; utiliser des IDs temporaires string et laisser le desktop renvoyer l'etat final ;
-- le QR code est maintenant obligatoire dans l'UI desktop, l'URL copiable n'est qu'un secours ;
+- le QR code doit ouvrir l'app mobile avec `?pair=...`, pas l'endpoint `/pair/claim` direct ;
+- l'URL copiable de `/pair/claim` reste un secours manuel dans `Paramètres` mobile ;
+- verifier les headers CORS sur le serveur desktop : la PWA mobile appelle le serveur desktop depuis une autre origine (`http://<ip>:5173` vers `http://<ip>:<port>`) ;
 - ne pas transformer le mobile en app autonome.
 
 ## Routes cible

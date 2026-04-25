@@ -153,10 +153,53 @@ function App() {
   const [syncMessage, setSyncMessage] = useState('')
   const [syncing, setSyncing] = useState(false)
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const autoPairAttemptedRef = useRef(false)
 
   useEffect(() => {
     saveMobileState(state)
   }, [state])
+
+  useEffect(() => {
+    if (autoPairAttemptedRef.current) {
+      return
+    }
+
+    const embeddedPairingUrl = new URLSearchParams(window.location.search).get('pair')
+
+    if (!embeddedPairingUrl) {
+      return
+    }
+
+    autoPairAttemptedRef.current = true
+
+    queueMicrotask(() => {
+      setActiveTab('settings')
+      setPairingUrl(embeddedPairingUrl)
+      setSyncing(true)
+      setSyncMessage('Appairage en cours...')
+
+      void claimPairing(embeddedPairingUrl, state.pairing.deviceId)
+        .then((result) => {
+          const nextPairing = {
+            ...result.pairing,
+            lastSyncAt: new Date().toISOString(),
+          }
+          setState(mergeSyncedState(result.state, nextPairing, []))
+          setSelectedProjectId(result.pairing.projectId ?? result.state.projects[0]?.id ?? '')
+          setSelectedBlockId(result.state.manuscriptNodes.find((node) => node.kind === 'block')?.id ?? null)
+          setBlockIdeaId(result.state.ideas[0]?.id ?? '')
+          setPairingUrl('')
+          setSyncMessage('Appairage terminé.')
+          window.history.replaceState({}, '', window.location.pathname)
+        })
+        .catch((error: unknown) => {
+          setSyncMessage(error instanceof Error ? error.message : 'Appairage impossible.')
+        })
+        .finally(() => {
+          setSyncing(false)
+        })
+    })
+  }, [state.pairing.deviceId])
 
   const filteredIdeas = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()

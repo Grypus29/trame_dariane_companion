@@ -18,14 +18,14 @@ Regle V1 :
 1. Julie ouvre le desktop.
 2. Dans le desktop, elle choisit `Parametres > Appairer un mobile`.
 3. Le desktop lance un serveur local temporaire et affiche un QR code.
-4. Le QR code contient une URL locale du type :
+4. Le QR code ouvre l'app mobile avec l'URL d'appairage embarquee :
 
 ```text
-http://192.168.1.42:48973/pair?token=...&projectId=...
+http://192.168.1.42:5173/?pair=http%3A%2F%2F192.168.1.42%3A48973%2Fpair%2Fclaim%3Ftoken%3D...
 ```
 
-5. L'iPhone ouvre cette URL dans Safari.
-6. Le mobile enregistre l'appairage et recupere l'etat initial du projet.
+5. L'iPhone ouvre la PWA dans Safari.
+6. Le mobile lit le parametre `pair`, appelle l'URL `/pair/claim`, enregistre l'appairage et recupere l'etat initial du projet.
 7. Les modifications mobile sont stockees localement comme operations.
 8. Quand le desktop est joignable sur le meme Wi-Fi, le mobile pousse les operations en attente.
 9. Le desktop applique les operations puis renvoie un etat a jour.
@@ -38,7 +38,8 @@ http://192.168.1.42:48973/pair?token=...&projectId=...
 - La V1 peut utiliser HTTP local avec token long aleatoire. Pas de cloud.
 - Le serveur desktop doit etre actif uniquement quand l'app desktop est lancee.
 - Le serveur desktop doit autoriser les requetes cross-origin depuis la PWA mobile, sinon `fetch()` sera bloque par le navigateur.
-- Si le QR desktop ouvre directement `/pair/claim`, l'iPhone affichera la reponse JSON hors de la PWA. Pour la V1 technique, le mobile accepte donc aussi le collage manuel de l'URL du QR dans `Paramètres`.
+- Si le QR desktop ouvre directement `/pair/claim`, l'iPhone affichera la reponse JSON hors de la PWA. Le QR doit donc viser l'URL de l'app mobile avec `?pair=<url-encode(pairClaimUrl)>`.
+- Pour la V1 technique, le mobile accepte encore le collage manuel de l'URL `/pair/claim` dans `Paramètres`.
 
 ## Appairage
 
