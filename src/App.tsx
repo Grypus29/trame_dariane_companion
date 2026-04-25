@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { loadMobileState, parseImportedState, saveMobileState } from './lib/mobileStore'
-import { claimPairing, fetchSyncState, pushSyncOperations } from './lib/syncClient'
+import { claimPairing } from './lib/syncClient'
+import { useSyncEngine } from './lib/syncEngine'
 import type {
   IdeaStatus,
   IdeaType,
@@ -154,6 +155,7 @@ function App() {
   const [syncing, setSyncing] = useState(false)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const autoPairAttemptedRef = useRef(false)
+  const { syncStatus, manualSync } = useSyncEngine(state, setState)
 
   useEffect(() => {
     saveMobileState(state)
@@ -625,53 +627,6 @@ function App() {
       setSyncMessage('URL collée.')
     } catch {
       setSyncMessage("Impossible de lire le presse-papiers.")
-    }
-  }
-
-  async function pullDesktopState() {
-    setSyncing(true)
-    setSyncMessage('')
-
-    try {
-      const result = await fetchSyncState(state.pairing)
-      const nextPairing = {
-        ...state.pairing,
-        lastSyncAt: new Date().toISOString(),
-        serverRevision: result.serverRevision,
-      }
-      setState(mergeSyncedState(result.state, nextPairing, state.pendingOperations))
-      setSyncMessage('État desktop récupéré.')
-    } catch (error) {
-      setSyncMessage(error instanceof Error ? error.message : 'Lecture desktop impossible.')
-    } finally {
-      setSyncing(false)
-    }
-  }
-
-  async function pushPendingOperations() {
-    if (state.pendingOperations.length === 0) {
-      setSyncMessage('Aucune opération en attente.')
-      return
-    }
-
-    setSyncing(true)
-    setSyncMessage('')
-
-    try {
-      const result = await pushSyncOperations(state.pairing, state.pendingOperations)
-      const acceptedIds = new Set(result.acceptedOperationIds)
-      const pendingOperations = state.pendingOperations.filter((operation) => !acceptedIds.has(operation.id))
-      const nextPairing = {
-        ...state.pairing,
-        lastSyncAt: new Date().toISOString(),
-        serverRevision: result.serverRevision,
-      }
-      setState(mergeSyncedState(result.state, nextPairing, pendingOperations))
-      setSyncMessage(`${result.acceptedOperationIds.length} opération(s) synchronisée(s).`)
-    } catch (error) {
-      setSyncMessage(error instanceof Error ? error.message : 'Synchronisation impossible.')
-    } finally {
-      setSyncing(false)
     }
   }
 
@@ -1180,14 +1135,14 @@ function App() {
               Appairer
             </button>
 
-            <div className="action-row">
-              <button className="secondary-action" type="button" onClick={() => void pullDesktopState()} disabled={syncing || !state.pairing.paired}>
-                Recevoir
-              </button>
-              <button className="secondary-action" type="button" onClick={() => void pushPendingOperations()} disabled={syncing || !state.pairing.paired}>
-                Envoyer
-              </button>
-            </div>
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={() => void manualSync()}
+              disabled={syncing || !state.pairing.paired || syncStatus === 'syncing'}
+            >
+              Synchroniser maintenant
+            </button>
 
             <button className="secondary-action danger-action" type="button" onClick={unpairDesktop} disabled={syncing || !state.pairing.paired}>
               Désappairer
