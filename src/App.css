@@ -294,6 +294,26 @@ button:focus-visible {
   font-weight: 800;
 }
 
+.settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 8px 10px;
+  padding-top: 4px;
+}
+
+.settings-grid span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.settings-grid strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
 .link-list {
   display: grid;
   gap: 8px;

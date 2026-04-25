@@ -31,6 +31,9 @@ Docs desktop importantes dans le projet principal :
 - `docs/UI_GUIDE.md`
 - `docs/UI_AUDIT.md`
 
+Doc mobile de synchronisation :
+- `docs/SYNC.md`
+
 Important : ne pas modifier le projet desktop depuis une discussion ouverte dans `trame-dariane-mobile`, sauf demande explicite.
 
 ## Promesse produit mobile
@@ -80,6 +83,8 @@ Le format racine est :
 ```ts
 type MobileState = {
   version: 1
+  pairing: PairingState
+  pendingOperations: SyncOperation[]
   projects: Project[]
   ideas: MobileIdea[]
   dedaleLinks: MobileIdeaLink[]
@@ -93,6 +98,8 @@ Ce JSON est le futur point de contact avec le desktop. Tant que le format n'est 
 Note 2026-04-25 : le stockage local mobile a ete rapproche du vocabulaire desktop sans figer le futur contrat de transfert. Les anciens `texts` sont migres en idees de type `Fragment` quand ils existent dans le localStorage/import JSON. Le debrief transfert de donnees doit encore decider si le futur format passe en `version: 2` ou s'aligne directement sur les tables desktop.
 
 Note 2026-04-25 bis : les liens du `Dédale` existent maintenant localement sous forme de liste d'associations depuis une fiche idee (`Écho`, `Causal`, `Motif`, `Résonance`, `Tension`). Cette UX est volontairement mobile-first et ne remplace pas la Toile. Le transfert desktop devra confirmer comment mapper `dedaleLinks` vers `dedale_links`.
+
+Decision 2026-04-25 : la cible V1 de transfert est une synchronisation automatique sur Wi-Fi local par appairage QR, inspiree de WhatsApp Web mais sans cloud. Le desktop reste source de verite. Sans appairage, le mobile ne doit pas exposer les vues metier en experience produit normale. Voir `docs/SYNC.md`.
 
 Principes pour faire evoluer le contrat :
 - incrementer `version` si le format devient incompatible ;
@@ -150,12 +157,12 @@ La couleur et la matiere restent proches de l'identite desktop : papier, atelier
 
 ## Prochaines etapes probables
 1. Tester sur iPhone reel, notamment le zoom Safari et la navigation basse.
-2. Debrief transfert de donnees mobile <-> desktop.
-3. Stabiliser le JSON exporte.
-4. Ajouter une ergonomie mobile plus fine pour l'organisation dans `Écrire` : drag tactile ou commandes de deplacement plus riches.
-5. Valider sur iPhone le mode redaction plein ecran et le comportement du clavier Safari.
-6. Etudier les liens du `Dédale` sur mobile via une interaction de recherche/association plutot qu'un graphe.
-7. Ajouter cote desktop un import manuel du JSON mobile, uniquement quand le format est clair.
+2. Implementer le serveur local d'appairage/synchro cote desktop.
+3. Brancher le mobile sur les routes locales `pair/claim`, `sync/state`, `sync/push`.
+4. Stabiliser le mapping entre `MobileState` et les tables desktop.
+5. Ajouter une ergonomie mobile plus fine pour l'organisation dans `Écrire` : drag tactile ou commandes de deplacement plus riches.
+6. Valider sur iPhone le mode redaction plein ecran et le comportement du clavier Safari.
+7. Etudier les liens du `Dédale` sur mobile via une interaction de recherche/association plutot qu'un graphe.
 
 ## Obsidian / vault
 Vault repere :

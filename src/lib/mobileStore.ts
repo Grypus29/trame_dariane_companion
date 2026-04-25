@@ -1,4 +1,17 @@
-import type { IdeaLinkKind, IdeaStatus, IdeaType, ManuscriptNode, MobileIdea, MobileIdeaLink, MobileState, NarrativeElement } from '../types'
+import type {
+  IdeaLinkKind,
+  IdeaStatus,
+  IdeaType,
+  ManuscriptNode,
+  MobileIdea,
+  MobileIdeaLink,
+  MobileState,
+  NarrativeElement,
+  PairingState,
+  SyncAction,
+  SyncEntity,
+  SyncOperation,
+} from '../types'
 
 const STORAGE_KEY = 'trame-dariane-mobile-state-v1'
 
@@ -7,9 +20,35 @@ const now = new Date().toISOString()
 const DESKTOP_IDEA_TYPES: IdeaType[] = ['scene', 'fragment', 'motif', 'revelation']
 const DESKTOP_STATUSES: IdeaStatus[] = ['idea', 'draft', 'written', 'reviewed']
 const DESKTOP_LINK_KINDS: IdeaLinkKind[] = ['causal', 'echo', 'motif', 'resonance', 'tension']
+const SYNC_ENTITIES: SyncEntity[] = ['idea', 'dedaleLink', 'manuscriptNode', 'element']
+const SYNC_ACTIONS: SyncAction[] = ['upsert', 'delete', 'move']
+
+function createDeviceId() {
+  if ('randomUUID' in crypto) {
+    return `device-${crypto.randomUUID()}`
+  }
+
+  return `device-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+const initialPairing: PairingState = {
+  paired: false,
+  pairingId: null,
+  deviceId: createDeviceId(),
+  desktopInstanceId: null,
+  desktopBaseUrl: null,
+  projectId: null,
+  projectName: null,
+  pairedAt: null,
+  lastSyncAt: null,
+  token: null,
+  serverRevision: null,
+}
 
 export const initialState: MobileState = {
   version: 1,
+  pairing: initialPairing,
+  pendingOperations: [],
   projects: [{ id: 'roman-julie', name: 'Premier livre' }],
   ideas: [
     {
@@ -199,6 +238,43 @@ function normalizeLink(value: Partial<MobileIdeaLink>, index: number): MobileIde
   }
 }
 
+function normalizePairing(value: Partial<PairingState> | undefined): PairingState {
+  return {
+    paired: value?.paired === true,
+    pairingId: typeof value?.pairingId === 'string' ? value.pairingId : null,
+    deviceId: typeof value?.deviceId === 'string' ? value.deviceId : initialPairing.deviceId,
+    desktopInstanceId: typeof value?.desktopInstanceId === 'string' ? value.desktopInstanceId : null,
+    desktopBaseUrl: typeof value?.desktopBaseUrl === 'string' ? value.desktopBaseUrl : null,
+    projectId: typeof value?.projectId === 'string' ? value.projectId : null,
+    projectName: typeof value?.projectName === 'string' ? value.projectName : null,
+    pairedAt: typeof value?.pairedAt === 'string' ? value.pairedAt : null,
+    lastSyncAt: typeof value?.lastSyncAt === 'string' ? value.lastSyncAt : null,
+    token: typeof value?.token === 'string' ? value.token : null,
+    serverRevision: typeof value?.serverRevision === 'number' ? value.serverRevision : null,
+  }
+}
+
+function normalizeOperation(value: Partial<SyncOperation>, index: number): SyncOperation | null {
+  if (
+    typeof value.entity !== 'string'
+    || !SYNC_ENTITIES.includes(value.entity as SyncEntity)
+    || typeof value.action !== 'string'
+    || !SYNC_ACTIONS.includes(value.action as SyncAction)
+    || typeof value.entityId !== 'string'
+  ) {
+    return null
+  }
+
+  return {
+    id: typeof value.id === 'string' ? value.id : `operation-import-${index}`,
+    entity: value.entity as SyncEntity,
+    action: value.action as SyncAction,
+    entityId: value.entityId,
+    payload: value.payload ?? null,
+    createdAt: typeof value.createdAt === 'string' ? value.createdAt : now,
+  }
+}
+
 function normalizeState(parsed: Partial<MobileState> & { texts?: Array<{ id?: string; projectId?: string | null; title?: string; content?: string; updatedAt?: string }> }): MobileState {
   const projects = Array.isArray(parsed.projects) && parsed.projects.length > 0 ? parsed.projects : initialState.projects
   const ideas = Array.isArray(parsed.ideas) ? parsed.ideas.map(normalizeIdea) : initialState.ideas
@@ -230,6 +306,10 @@ function normalizeState(parsed: Partial<MobileState> & { texts?: Array<{ id?: st
 
   return {
     version: 1,
+    pairing: normalizePairing(parsed.pairing),
+    pendingOperations: Array.isArray(parsed.pendingOperations)
+      ? parsed.pendingOperations.map(normalizeOperation).filter((operation): operation is SyncOperation => operation !== null)
+      : [],
     projects,
     ideas,
     dedaleLinks: Array.isArray(parsed.dedaleLinks)

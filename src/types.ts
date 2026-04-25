@@ -10,6 +10,10 @@ export type ManuscriptNodeKind = 'chapter' | 'subchapter' | 'block'
 
 export type IdeaLinkKind = 'causal' | 'echo' | 'motif' | 'resonance' | 'tension'
 
+export type SyncEntity = 'idea' | 'dedaleLink' | 'manuscriptNode' | 'element'
+
+export type SyncAction = 'upsert' | 'delete' | 'move'
+
 export type Project = {
   id: string
   name: string
@@ -59,8 +63,33 @@ export type NarrativeElement = {
   updatedAt: string
 }
 
+export type PairingState = {
+  paired: boolean
+  pairingId: string | null
+  deviceId: string
+  desktopInstanceId: string | null
+  desktopBaseUrl: string | null
+  projectId: string | null
+  projectName: string | null
+  pairedAt: string | null
+  lastSyncAt: string | null
+  token: string | null
+  serverRevision: number | null
+}
+
+export type SyncOperation = {
+  id: string
+  entity: SyncEntity
+  action: SyncAction
+  entityId: string
+  payload: unknown
+  createdAt: string
+}
+
 export type MobileState = {
   version: 1
+  pairing: PairingState
+  pendingOperations: SyncOperation[]
   projects: Project[]
   ideas: MobileIdea[]
   dedaleLinks: MobileIdeaLink[]

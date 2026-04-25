@@ -930,6 +930,25 @@ function App() {
           </div>
 
           <div className="exchange-panel">
+            <div className="section-lead">
+              <h3>Appairage</h3>
+              <span>{state.pairing.paired ? 'Appairé' : 'Non appairé'}</span>
+            </div>
+            <p>
+              La V1 cible un appairage avec l'ordinateur sur le Wi-Fi local. Le desktop reste la source de vérité du
+              projet.
+            </p>
+            <div className="settings-grid">
+              <span>Appareil</span>
+              <strong>{state.pairing.deviceId}</strong>
+              <span>Projet</span>
+              <strong>{state.pairing.projectName ?? 'Aucun projet appairé'}</strong>
+              <span>Opérations en attente</span>
+              <strong>{state.pendingOperations.length}</strong>
+            </div>
+          </div>
+
+          <div className="exchange-panel">
             <p>
               Cette zone garde l'export/import JSON du prototype. Elle pourra accueillir plus tard un appairage avec
               l'ordinateur, par exemple via QR code.
