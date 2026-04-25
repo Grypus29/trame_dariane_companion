@@ -58,12 +58,16 @@
 }
 
 .status-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   width: min(100%, calc(100vw - 28px), 680px);
   max-width: 680px;
   margin: 0 auto 14px;
+}
+
+.status-strip > span {
+  flex: 1 1 auto;
 }
 
 .status-strip span {
@@ -567,4 +571,67 @@ button:focus-visible {
   .form-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Sync badge */
+.sync-badge {
+  padding: 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+.sync-badge--connected {
+  background: rgba(80, 160, 80, 0.12);
+  color: #3a7a3a;
+  border-color: rgba(80, 160, 80, 0.3);
+}
+
+.sync-badge--syncing {
+  background: rgba(60, 100, 200, 0.1);
+  color: #3455a0;
+  border-color: rgba(60, 100, 200, 0.25);
+}
+
+.sync-badge--offline {
+  background: rgba(180, 110, 20, 0.12);
+  color: #7a4f10;
+  border-color: rgba(180, 110, 20, 0.28);
+}
+
+/* Pairing gate — écran d'invitation */
+.pairing-gate {
+  padding: 28px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+
+.pairing-gate-icon {
+  margin: 0 0 12px;
+  font-size: 2.4rem;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.pairing-gate h3 {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 1.1rem;
+}
+
+.pairing-gate p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.pairing-gate-alt {
+  margin-top: 12px !important;
+  font-size: 0.82rem !important;
+  opacity: 0.75;
 }

@@ -161,6 +161,7 @@ function App() {
     saveMobileState(state)
   }, [state])
 
+
   useEffect(() => {
     if (autoPairAttemptedRef.current) {
       return
@@ -202,6 +203,8 @@ function App() {
         })
     })
   }, [state.pairing.deviceId])
+
+  const visibleTab: MobileTab = state.pairing.paired ? activeTab : 'settings'
 
   const filteredIdeas = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
@@ -755,9 +758,18 @@ function App() {
         <span>{state.ideas.length} idées</span>
         <span>{state.manuscriptNodes.filter((node) => node.kind === 'block').length} blocs</span>
         <span>{state.elements.length} éléments</span>
+        {state.pairing.paired && (
+          <span className={`sync-badge sync-badge--${syncStatus}`} aria-live="polite">
+            {syncStatus === 'connected' && 'Connecté'}
+            {syncStatus === 'syncing' && 'Sync…'}
+            {syncStatus === 'offline' && (state.pendingOperations.length > 0
+              ? `Hors ligne · ${state.pendingOperations.length} en attente`
+              : 'Hors ligne')}
+          </span>
+        )}
       </section>
 
-      {activeTab === 'dedale' && (
+      {visibleTab === 'dedale' && (
         <section className="screen" aria-labelledby="dedale-title">
           <div className="screen-title">
             <p className="eyebrow">Idées libres et réserve</p>
@@ -928,7 +940,7 @@ function App() {
         </section>
       )}
 
-      {activeTab === 'ecrire' && (
+      {visibleTab === 'ecrire' && (
         <section className="screen writing-screen" aria-labelledby="ecrire-title">
           <div className="screen-title">
             <p className="eyebrow">Plan du livre et texte assemblé</p>
@@ -1013,7 +1025,7 @@ function App() {
         </section>
       )}
 
-      {activeTab === 'elements' && (
+      {visibleTab === 'elements' && (
         <section className="screen" aria-labelledby="elements-title">
           <div className="screen-title">
             <p className="eyebrow">Personnages, lieux, objets et thèmes</p>
@@ -1091,12 +1103,27 @@ function App() {
         </section>
       )}
 
-      {activeTab === 'settings' && (
+      {visibleTab === 'settings' && (
         <section className="screen" aria-labelledby="settings-title">
           <div className="screen-title">
             <p className="eyebrow">Passerelle desktop</p>
             <h2 id="settings-title">Paramètres</h2>
           </div>
+
+          {!state.pairing.paired && (
+            <div className="pairing-gate">
+              <p className="pairing-gate-icon" aria-hidden="true">⬡</p>
+              <h3>Scanner le QR du bureau</h3>
+              <p>
+                Ouvrez Trame d'Ariane sur votre ordinateur, puis allez dans{' '}
+                <strong>Paramètres › Appairer un mobile</strong>. Scannez le QR code avec l'appareil photo de votre
+                téléphone.
+              </p>
+              <p className="pairing-gate-alt">
+                Ou collez manuellement l'URL ci-dessous.
+              </p>
+            </div>
+          )}
 
           <div className="exchange-panel">
             <div className="section-lead">
@@ -1104,8 +1131,7 @@ function App() {
               <span>{state.pairing.paired ? 'Appairé' : 'Non appairé'}</span>
             </div>
             <p>
-              La V1 cible un appairage avec l'ordinateur sur le Wi-Fi local. Le desktop reste la source de vérité du
-              projet.
+              L'appairage se fait sur le Wi-Fi local. Le desktop reste la source de vérité du projet.
             </p>
             <div className="settings-grid">
               <span>Appareil</span>
@@ -1193,17 +1219,19 @@ function App() {
       )}
 
       <nav className="bottom-nav" aria-label="Navigation mobile">
-        {tabs.map((tab) => (
-          <button
-            className={activeTab === tab.id ? 'active' : ''}
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            type="button"
-          >
-            <span aria-hidden="true">{tab.icon}</span>
-            {tab.label}
-          </button>
-        ))}
+        {tabs
+          .filter((tab) => state.pairing.paired || tab.id === 'settings')
+          .map((tab) => (
+            <button
+              className={activeTab === tab.id ? 'active' : ''}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              type="button"
+            >
+              <span aria-hidden="true">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
       </nav>
 
       {focusIdea && (
