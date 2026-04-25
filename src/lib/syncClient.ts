@@ -38,6 +38,16 @@ function parsePairingUrl(rawUrl: string) {
     throw new Error("L'URL d'appairage est invalide.")
   }
 
+  // Accepte aussi le format QR complet : http://<ip>:5173/?pair=<url-encodée>
+  const pairParam = url.searchParams.get('pair')
+  if (pairParam) {
+    try {
+      url = new URL(pairParam)
+    } catch {
+      throw new Error("L'URL embarquée dans le paramètre 'pair' est invalide.")
+    }
+  }
+
   const token = url.searchParams.get('token')
 
   if (!token) {
