@@ -118,6 +118,29 @@ Le serveur HTTP local desktop doit être autorisé dans le pare-feu Windows sino
 
 ---
 
+## Refresh desktop au push mobile
+
+Quand le serveur Rust reçoit un `/sync/push` et l'applique, émettre un événement Tauri vers le frontend :
+
+```rust
+// handler /sync/push, après application des opérations
+app_handle.emit("sync:updated", ()).ok();
+```
+
+```ts
+// composant Dédale (et idéalement Écrire + Éléments)
+useEffect(() => {
+  const unlisten = listen("sync:updated", () => {
+    refreshIdeas() // re-fetch SQLite des idées uniquement, sans reset de vue
+  })
+  return () => { unlisten.then(f => f()) }
+}, [])
+```
+
+Objectif : l'idée ajoutée sur mobile apparaît dans le Dédale desktop sans que l'utilisateur change de page, et sans perturber le formulaire en cours d'édition (le refresh ne touche que la liste, pas le state local du formulaire).
+
+---
+
 ## Mapping MobileState ↔ tables desktop
 
 Non encore stabilisé. Décisions en attente :
