@@ -33,6 +33,7 @@ Docs desktop importantes dans le projet principal :
 
 Doc mobile de synchronisation :
 - `docs/SYNC.md`
+- `docs/DESKTOP_HANDOFF_PROMPT.md` pour ouvrir une nouvelle conversation dans le repo desktop.
 
 Important : ne pas modifier le projet desktop depuis une discussion ouverte dans `trame-dariane-mobile`, sauf demande explicite.
 
