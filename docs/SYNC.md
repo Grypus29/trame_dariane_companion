@@ -37,6 +37,8 @@ http://192.168.1.42:48973/pair?token=...&projectId=...
 - iOS/Safari peut limiter certains comportements PWA en HTTP local. A valider sur iPhone reel.
 - La V1 peut utiliser HTTP local avec token long aleatoire. Pas de cloud.
 - Le serveur desktop doit etre actif uniquement quand l'app desktop est lancee.
+- Le serveur desktop doit autoriser les requetes cross-origin depuis la PWA mobile, sinon `fetch()` sera bloque par le navigateur.
+- Si le QR desktop ouvre directement `/pair/claim`, l'iPhone affichera la reponse JSON hors de la PWA. Pour la V1 technique, le mobile accepte donc aussi le collage manuel de l'URL du QR dans `Paramètres`.
 
 ## Appairage
 

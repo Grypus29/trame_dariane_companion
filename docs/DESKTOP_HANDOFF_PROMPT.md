@@ -163,6 +163,188 @@ Si tout implementer d'un coup est trop large, faire un premier batch vertical :
 - UI desktop qui affiche l'URL d'appairage ;
 - documentation.
 
+## Etat desktop apres reprise du 2026-04-25
+
+Le repo desktop a maintenant une premiere implementation non committee de la synchro locale.
+
+Fichiers desktop principaux modifies/ajoutes :
+
+```text
+src-tauri/src/mobile_sync.rs
+src-tauri/src/lib.rs
+src-tauri/Cargo.toml
+src-tauri/Cargo.lock
+src/components/PairMobileModal.tsx
+src/components/Toolbar.tsx
+src/screens/ProjectView.tsx
+docs/API.md
+docs/ARCHITECTURE.md
+docs/ROADMAP.md
+package.json
+package-lock.json
+```
+
+Ce qui est implemente cote desktop :
+- serveur HTTP local Rust/Tauri demarre a la demande par `start_mobile_pairing` ;
+- ecoute sur `0.0.0.0:<port dynamique>` pendant que l'app desktop tourne ;
+- detection d'une IP locale pour construire l'URL reseau ;
+- `desktopInstanceId` stable stocke dans le dossier config Tauri ;
+- token long aleatoire temporaire, garde en memoire, expiration 10 minutes ;
+- modale desktop `Mobile` avec QR code scannable + URL copiable en fallback ;
+- dependance frontend `qrcode` ajoutee pour generer le QR code ;
+- `GET /pair/claim` ;
+- `GET /sync/state` ;
+- `POST /sync/push` ;
+- mapping SQLite desktop vers `MobileState.version = 1` ;
+- application des operations V1 sures dans SQLite, en transaction, puis retour de l'etat desktop final.
+
+Verifications deja faites cote desktop :
+
+```powershell
+npm run build
+cargo check
+```
+
+Les deux passent. Le build Vite garde seulement l'avertissement habituel sur la taille du chunk.
+
+Important : le repo mobile n'a pas ete modifie par la conversation desktop, sauf ce fichier de relais a la demande explicite de Julien.
+
+## Contrat desktop actuel pour la discussion mobile
+
+La discussion mobile peut maintenant brancher l'app compagnon sur ces routes.
+
+### Appairage
+
+Le desktop affiche un QR code contenant une URL du type :
+
+```text
+http://<ip-locale>:<port>/pair/claim?token=<token>
+```
+
+Le mobile doit appeler :
+
+```text
+GET /pair/claim?token=<token>&deviceId=<deviceId>
+```
+
+Reponse desktop actuelle :
+
+```json
+{
+  "pairingId": "pair_...",
+  "desktopInstanceId": "desktop_...",
+  "project": { "id": "1", "name": "Premier livre" },
+  "serverRevision": 12,
+  "state": {}
+}
+```
+
+Le mobile doit stocker :
+- `pairingId`
+- `desktopInstanceId`
+- `desktopBaseUrl` deduit de l'URL scannee
+- `project.id`
+- `project.name`
+- `token`
+- `serverRevision`
+- `state`
+
+### Lecture d'etat
+
+```text
+GET /sync/state
+Authorization: Bearer <token>
+X-Device-Id: <deviceId>
+```
+
+Reponse :
+
+```json
+{
+  "serverRevision": 12,
+  "state": {
+    "version": 1,
+    "pairing": {},
+    "pendingOperations": [],
+    "projects": [],
+    "ideas": [],
+    "dedaleLinks": [],
+    "manuscriptNodes": [],
+    "elements": []
+  }
+}
+```
+
+### Push mobile
+
+```text
+POST /sync/push
+Authorization: Bearer <token>
+X-Device-Id: <deviceId>
+Content-Type: application/json
+```
+
+Body :
+
+```json
+{
+  "baseRevision": 12,
+  "operations": []
+}
+```
+
+Reponse :
+
+```json
+{
+  "acceptedOperationIds": [],
+  "serverRevision": 13,
+  "state": {}
+}
+```
+
+Regle mobile importante : apres un push accepte, remplacer la copie locale par `state` renvoye par le desktop et retirer de `pendingOperations` les operations dont l'id est dans `acceptedOperationIds`.
+
+Operations desktop actuellement prises en charge :
+- `idea.upsert`
+- `idea.delete`
+- `dedaleLink.upsert`
+- `dedaleLink.delete`
+- `manuscriptNode.upsert`
+- `manuscriptNode.move`
+- `manuscriptNode.delete`
+- `element.upsert`
+- `element.delete`
+
+Regles desktop actuelles :
+- tri par `createdAt`, puis par `id` ;
+- transaction SQLite pour les operations valides ;
+- resolution des IDs mobiles temporaires dans un meme push ;
+- les operations invalides ou impossibles a resoudre ne sont pas acceptees et ne bloquent pas le reste ;
+- le desktop renvoie toujours l'etat final comme source de verite.
+
+## Ce qui reste a faire cote desktop apres branchement mobile
+
+Quand le mobile aura commence a appeler les routes, reprendre dans le repo desktop et verifier :
+
+1. Lancer l'app Tauri desktop reelle et ouvrir la modale `Mobile`.
+2. Scanner le QR code depuis l'iPhone / Safari / PWA mobile.
+3. Valider que `GET /pair/claim` est atteint depuis le telephone sur le meme Wi-Fi.
+4. Tester `GET /sync/state` depuis le mobile avec les headers.
+5. Tester un `POST /sync/push` avec une idee simple creee sur mobile.
+6. Verifier dans le desktop que l'idee arrive bien dans le Dedale projet.
+7. Tester un push de `dedaleLink`, `manuscriptNode` et `element`.
+8. Ajuster les mappings desktop selon les vrais payloads emis par le mobile.
+9. Ajouter ensuite un vrai stockage des appairages autorises si besoin.
+10. Durcir les conflits et ajouter des messages utilisateur plus nets en cas de pare-feu Windows.
+
+Points de vigilance cote desktop :
+- le serveur lit `sqlite:trame.db` via le dossier `app_config_dir`, comme `tauri-plugin-sql` ;
+- les nouvelles idees mobiles sans ID desktop sont creees comme idees du Dedale projet (`in_pool=1`) ;
+- le mobile ne doit pas inventer des IDs desktop numeriques pour les nouvelles entites ; utiliser des IDs temporaires string et laisser le desktop renvoyer l'etat final ;
+- le QR code est maintenant obligatoire dans l'UI desktop, l'URL copiable n'est qu'un secours ;
+- ne pas transformer le mobile en app autonome.
+
 ## Routes cible
 
 ### `GET /pair/claim`
@@ -251,4 +433,3 @@ Reponse :
 Demande utilisateur probable :
 
 > Lis le fichier de relais mobile puis commence l'implementation desktop de la synchro Wi-Fi locale. Le fichier de relais est dans `C:\Users\Julien\Documents\Claude\Projets\Trame d'Ariane mobile\docs\DESKTOP_HANDOFF_PROMPT.md`. Travaille uniquement dans le repo desktop sauf besoin explicite.
-

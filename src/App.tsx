@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { loadMobileState, parseImportedState, saveMobileState } from './lib/mobileStore'
+import { claimPairing, fetchSyncState, pushSyncOperations } from './lib/syncClient'
 import type {
   IdeaStatus,
   IdeaType,
@@ -11,6 +12,10 @@ import type {
   MobileTab,
   NarrativeElement,
   NarrativeElementKind,
+  PairingState,
+  SyncAction,
+  SyncEntity,
+  SyncOperation,
 } from './types'
 
 const tabs: Array<{ id: MobileTab; label: string; icon: string }> = [
@@ -90,6 +95,29 @@ function sortByOrder<T extends { sortOrder: number; id: string }>(items: T[]) {
   return [...items].sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id))
 }
 
+function createOperation(entity: SyncEntity, action: SyncAction, entityId: string, payload: unknown): SyncOperation {
+  return {
+    id: createId('operation'),
+    entity,
+    action,
+    entityId,
+    payload,
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function queueOperation(current: MobileState, operation: SyncOperation) {
+  return current.pairing.paired ? [...current.pendingOperations, operation] : current.pendingOperations
+}
+
+function mergeSyncedState(remoteState: MobileState, pairing: PairingState, pendingOperations: SyncOperation[]) {
+  return {
+    ...remoteState,
+    pairing,
+    pendingOperations,
+  }
+}
+
 function App() {
   const [state, setState] = useState<MobileState>(() => loadMobileState())
   const [activeTab, setActiveTab] = useState<MobileTab>('dedale')
@@ -121,6 +149,9 @@ function App() {
   const [elementTraits, setElementTraits] = useState('')
   const [importMessage, setImportMessage] = useState('')
   const [manualJson, setManualJson] = useState('')
+  const [pairingUrl, setPairingUrl] = useState('')
+  const [syncMessage, setSyncMessage] = useState('')
+  const [syncing, setSyncing] = useState(false)
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -130,13 +161,10 @@ function App() {
   const filteredIdeas = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
 
-    if (!needle) {
-      return state.ideas
-    }
-
     return state.ideas.filter((idea) => {
       if (ideaTypeFilter !== 'all' && idea.type !== ideaTypeFilter) return false
       if (ideaStatusFilter !== 'all' && idea.status !== ideaStatusFilter) return false
+      if (!needle) return true
       const haystack = `${idea.title} ${idea.content} ${idea.tags.join(' ')}`.toLocaleLowerCase()
       return haystack.includes(needle)
     })
@@ -218,13 +246,25 @@ function App() {
       .filter(Boolean)
 
     if (editingIdeaId) {
+      const nextIdea: MobileIdea = {
+        id: editingIdeaId,
+        projectId: selectedProjectId || null,
+        type: ideaType,
+        status: ideaStatus,
+        title: title || 'Idée sans titre',
+        content,
+        tags,
+        createdAt: date,
+        updatedAt: date,
+      }
       setState((current) => ({
         ...current,
         ideas: current.ideas.map((idea) =>
           idea.id === editingIdeaId
-            ? { ...idea, title: title || 'Idée sans titre', content, type: ideaType, status: ideaStatus, tags, updatedAt: date }
+            ? { ...idea, ...nextIdea, createdAt: idea.createdAt }
             : idea,
         ),
+        pendingOperations: queueOperation(current, createOperation('idea', 'upsert', editingIdeaId, nextIdea)),
       }))
     } else {
       const idea: MobileIdea = {
@@ -242,6 +282,7 @@ function App() {
       setState((current) => ({
         ...current,
         ideas: [idea, ...current.ideas],
+        pendingOperations: queueOperation(current, createOperation('idea', 'upsert', idea.id, idea)),
       }))
       setBlockIdeaId(idea.id)
     }
@@ -250,20 +291,24 @@ function App() {
   }
 
   function updateIdeaContent(ideaId: string, nextContent: string) {
+    const date = new Date().toISOString()
     setState((current) => ({
       ...current,
       ideas: current.ideas.map((idea) =>
-        idea.id === ideaId ? { ...idea, content: nextContent, status: idea.status === 'idea' ? 'draft' : idea.status, updatedAt: new Date().toISOString() } : idea,
+        idea.id === ideaId ? { ...idea, content: nextContent, status: idea.status === 'idea' ? 'draft' : idea.status, updatedAt: date } : idea,
       ),
+      pendingOperations: queueOperation(current, createOperation('idea', 'upsert', ideaId, { content: nextContent, updatedAt: date })),
     }))
   }
 
   function updateIdeaFields(ideaId: string, patch: Partial<Pick<MobileIdea, 'title' | 'type' | 'status'>>) {
+    const date = new Date().toISOString()
     setState((current) => ({
       ...current,
       ideas: current.ideas.map((idea) =>
-        idea.id === ideaId ? { ...idea, ...patch, updatedAt: new Date().toISOString() } : idea,
+        idea.id === ideaId ? { ...idea, ...patch, updatedAt: date } : idea,
       ),
+      pendingOperations: queueOperation(current, createOperation('idea', 'upsert', ideaId, { ...patch, updatedAt: date })),
     }))
   }
 
@@ -282,20 +327,20 @@ function App() {
 
     const date = new Date().toISOString()
 
+    const link = {
+      id: createId('link'),
+      fromIdeaId: editingIdeaId,
+      toIdeaId: linkTargetId,
+      kind: linkKind,
+      note: linkNote.trim(),
+      createdAt: date,
+      updatedAt: date,
+    }
+
     setState((current) => ({
       ...current,
-      dedaleLinks: [
-        {
-          id: createId('link'),
-          fromIdeaId: editingIdeaId,
-          toIdeaId: linkTargetId,
-          kind: linkKind,
-          note: linkNote.trim(),
-          createdAt: date,
-          updatedAt: date,
-        },
-        ...current.dedaleLinks,
-      ],
+      dedaleLinks: [link, ...current.dedaleLinks],
+      pendingOperations: queueOperation(current, createOperation('dedaleLink', 'upsert', link.id, link)),
     }))
     setLinkNote('')
   }
@@ -304,6 +349,7 @@ function App() {
     setState((current) => ({
       ...current,
       dedaleLinks: current.dedaleLinks.filter((link) => link.id !== linkId),
+      pendingOperations: queueOperation(current, createOperation('dedaleLink', 'delete', linkId, null)),
     }))
   }
 
@@ -332,6 +378,7 @@ function App() {
     setState((current) => ({
       ...current,
       manuscriptNodes: [...current.manuscriptNodes, node],
+      pendingOperations: queueOperation(current, createOperation('manuscriptNode', 'upsert', node.id, node)),
     }))
     setSelectedParentId(node.id)
     setSectionTitle('')
@@ -367,6 +414,7 @@ function App() {
     setState((current) => ({
       ...current,
       manuscriptNodes: [...current.manuscriptNodes, node],
+      pendingOperations: queueOperation(current, createOperation('manuscriptNode', 'upsert', node.id, node)),
     }))
     setSelectedBlockId(node.id)
   }
@@ -387,6 +435,10 @@ function App() {
           node.id === selectedBlockId
             ? { ...node, parentId: nextParentId, sortOrder: siblings.length, updatedAt: date }
             : node,
+        ),
+        pendingOperations: queueOperation(
+          current,
+          createOperation('manuscriptNode', 'move', selectedBlockId, { parentId: nextParentId, sortOrder: siblings.length, updatedAt: date }),
         ),
       }
     })
@@ -414,7 +466,11 @@ function App() {
       left.updatedAt = new Date().toISOString()
       right.updatedAt = left.updatedAt
 
-      return { ...current, manuscriptNodes: next }
+      return {
+        ...current,
+        manuscriptNodes: next,
+        pendingOperations: queueOperation(current, createOperation('manuscriptNode', 'move', nodeId, { direction, updatedAt: left.updatedAt })),
+      }
     })
   }
 
@@ -451,6 +507,18 @@ function App() {
             ? { ...element, kind: elementKind, name, description: elementDescription.trim(), traits: elementTraits.trim(), updatedAt: date }
             : element,
         ),
+        pendingOperations: queueOperation(
+          current,
+          createOperation('element', 'upsert', editingElementId, {
+            id: editingElementId,
+            projectId: selectedProjectId || null,
+            kind: elementKind,
+            name,
+            description: elementDescription.trim(),
+            traits: elementTraits.trim(),
+            updatedAt: date,
+          }),
+        ),
       }))
     } else {
       const element: NarrativeElement = {
@@ -466,6 +534,7 @@ function App() {
       setState((current) => ({
         ...current,
         elements: [element, ...current.elements],
+        pendingOperations: queueOperation(current, createOperation('element', 'upsert', element.id, element)),
       }))
     }
 
@@ -480,6 +549,108 @@ function App() {
     link.download = `trame-mobile-${new Date().toISOString().slice(0, 10)}.json`
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  async function pairWithDesktop() {
+    setSyncing(true)
+    setSyncMessage('')
+
+    try {
+      const result = await claimPairing(pairingUrl, state.pairing.deviceId)
+      const nextPairing = {
+        ...result.pairing,
+        lastSyncAt: new Date().toISOString(),
+      }
+      const nextState = mergeSyncedState(result.state, nextPairing, [])
+      setState(nextState)
+      setSelectedProjectId(result.pairing.projectId ?? result.state.projects[0]?.id ?? '')
+      setSelectedBlockId(result.state.manuscriptNodes.find((node) => node.kind === 'block')?.id ?? null)
+      setBlockIdeaId(result.state.ideas[0]?.id ?? '')
+      setPairingUrl('')
+      setSyncMessage('Appairage terminé.')
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : 'Appairage impossible.')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function pastePairingUrl() {
+    try {
+      const value = await navigator.clipboard.readText()
+      setPairingUrl(value)
+      setSyncMessage('URL collée.')
+    } catch {
+      setSyncMessage("Impossible de lire le presse-papiers.")
+    }
+  }
+
+  async function pullDesktopState() {
+    setSyncing(true)
+    setSyncMessage('')
+
+    try {
+      const result = await fetchSyncState(state.pairing)
+      const nextPairing = {
+        ...state.pairing,
+        lastSyncAt: new Date().toISOString(),
+        serverRevision: result.serverRevision,
+      }
+      setState(mergeSyncedState(result.state, nextPairing, state.pendingOperations))
+      setSyncMessage('État desktop récupéré.')
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : 'Lecture desktop impossible.')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function pushPendingOperations() {
+    if (state.pendingOperations.length === 0) {
+      setSyncMessage('Aucune opération en attente.')
+      return
+    }
+
+    setSyncing(true)
+    setSyncMessage('')
+
+    try {
+      const result = await pushSyncOperations(state.pairing, state.pendingOperations)
+      const acceptedIds = new Set(result.acceptedOperationIds)
+      const pendingOperations = state.pendingOperations.filter((operation) => !acceptedIds.has(operation.id))
+      const nextPairing = {
+        ...state.pairing,
+        lastSyncAt: new Date().toISOString(),
+        serverRevision: result.serverRevision,
+      }
+      setState(mergeSyncedState(result.state, nextPairing, pendingOperations))
+      setSyncMessage(`${result.acceptedOperationIds.length} opération(s) synchronisée(s).`)
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : 'Synchronisation impossible.')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  function unpairDesktop() {
+    setState((current) => ({
+      ...current,
+      pairing: {
+        ...current.pairing,
+        paired: false,
+        pairingId: null,
+        desktopInstanceId: null,
+        desktopBaseUrl: null,
+        projectId: null,
+        projectName: null,
+        pairedAt: null,
+        lastSyncAt: null,
+        token: null,
+        serverRevision: null,
+      },
+      pendingOperations: [],
+    }))
+    setSyncMessage('Mobile désappairé.')
   }
 
   async function copyExportState() {
@@ -945,7 +1116,41 @@ function App() {
               <strong>{state.pairing.projectName ?? 'Aucun projet appairé'}</strong>
               <span>Opérations en attente</span>
               <strong>{state.pendingOperations.length}</strong>
+              <span>Dernière synchro</span>
+              <strong>{state.pairing.lastSyncAt ? new Date(state.pairing.lastSyncAt).toLocaleString('fr-FR') : 'Jamais'}</strong>
             </div>
+
+            <label>
+              URL du QR desktop
+              <input
+                value={pairingUrl}
+                onChange={(event) => setPairingUrl(event.target.value)}
+                placeholder="http://192.168.x.x:48973/pair/claim?token=..."
+              />
+            </label>
+
+            <button className="secondary-action" type="button" onClick={() => void pastePairingUrl()} disabled={syncing}>
+              Coller l'URL
+            </button>
+
+            <button className="primary-action" type="button" onClick={() => void pairWithDesktop()} disabled={syncing || !pairingUrl.trim()}>
+              Appairer
+            </button>
+
+            <div className="action-row">
+              <button className="secondary-action" type="button" onClick={() => void pullDesktopState()} disabled={syncing || !state.pairing.paired}>
+                Recevoir
+              </button>
+              <button className="secondary-action" type="button" onClick={() => void pushPendingOperations()} disabled={syncing || !state.pairing.paired}>
+                Envoyer
+              </button>
+            </div>
+
+            <button className="secondary-action danger-action" type="button" onClick={unpairDesktop} disabled={syncing || !state.pairing.paired}>
+              Désappairer
+            </button>
+
+            {syncMessage && <p className="import-message">{syncMessage}</p>}
           </div>
 
           <div className="exchange-panel">

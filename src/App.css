@@ -181,6 +181,11 @@ button:focus-visible {
   background: var(--accent-soft);
 }
 
+.danger-action {
+  color: #8a2f23;
+  background: rgba(138, 47, 35, 0.1);
+}
+
 .idea-list,
 .element-list {
   display: grid;

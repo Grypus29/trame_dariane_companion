@@ -320,6 +320,12 @@ function normalizeState(parsed: Partial<MobileState> & { texts?: Array<{ id?: st
   }
 }
 
+export function normalizeMobileState(
+  parsed: Partial<MobileState> & { texts?: Array<{ id?: string; projectId?: string | null; title?: string; content?: string; updatedAt?: string }> },
+): MobileState {
+  return normalizeState(parsed)
+}
+
 export function loadMobileState(): MobileState {
   const rawState = window.localStorage.getItem(STORAGE_KEY)
 
